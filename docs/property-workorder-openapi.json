@@ -1,0 +1,1083 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "物业公司运维工单管理平台 API",
+    "version": "1.0.0",
+    "description": "物业公司运维工单管理平台前后端分离接口规范。\n统一响应结构：{ code, message, data }，code=0 表示成功。\n统一认证：Authorization: Bearer <JWT>。\nJSON 字段统一使用 camelCase（小驼峰）。"
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "开发环境" }
+  ],
+  "tags": [
+    { "name": "auth", "description": "认证模块" },
+    { "name": "users", "description": "用户模块" },
+    { "name": "work-orders", "description": "工单模块" },
+    { "name": "stats", "description": "统计报表模块" }
+  ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "登录",
+        "description": "公开接口，无需鉴权。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" },
+              "example": { "username": "admin", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/LoginData" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "退出登录",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "object", "nullable": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "获取当前登录用户信息",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/UserInfo" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": ["users"],
+        "summary": "用户列表（分页+筛选）",
+        "description": "权限：ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PageSizeParam" },
+          { "$ref": "#/components/parameters/KeywordParam" },
+          { "name": "role", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/Role" }, "description": "角色编码" },
+          { "name": "status", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/UserStatus" }, "description": "用户状态" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "list": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
+                        "total": { "type": "integer", "example": 100 },
+                        "page": { "type": "integer", "example": 1 },
+                        "pageSize": { "type": "integer", "example": 20 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["users"],
+        "summary": "新增用户",
+        "description": "权限：ADMIN",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/engineers": {
+      "get": {
+        "tags": ["users"],
+        "summary": "获取可派单的维修工列表",
+        "description": "权限：CUSTOMER_SERVICE / ADMIN",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/UserBrief" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "put": {
+        "tags": ["users"],
+        "summary": "编辑用户",
+        "description": "权限：ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["users"],
+        "summary": "删除用户",
+        "description": "权限：ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "object", "nullable": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}/password": {
+      "put": {
+        "tags": ["users"],
+        "summary": "重置密码",
+        "description": "权限：ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PasswordResetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "object", "nullable": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "创建报修工单",
+        "description": "权限：RESIDENT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WorkOrderCreateRequest" },
+              "example": {
+                "title": "3栋2单元水管漏水",
+                "description": "厨房水管接口处漏水严重",
+                "type": "WATER",
+                "priority": "HIGH",
+                "images": ["https://xxx/a.jpg", "https://xxx/b.jpg"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["work-orders"],
+        "summary": "工单列表（分页+筛选）",
+        "description": "权限：登录用户",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PageSizeParam" },
+          { "name": "status", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/WorkOrderStatus" }, "description": "工单状态" },
+          { "name": "type", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/WorkOrderType" }, "description": "报修类型" },
+          { "name": "priority", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/WorkOrderPriority" }, "description": "优先级" },
+          { "$ref": "#/components/parameters/KeywordParam" },
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "开始日期" },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "结束日期" },
+          { "name": "assigneeId", "in": "query", "required": false, "schema": { "type": "integer", "format": "int64" }, "description": "处理人ID" },
+          { "name": "reporterId", "in": "query", "required": false, "schema": { "type": "integer", "format": "int64" }, "description": "报修人ID" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "list": { "type": "array", "items": { "$ref": "#/components/schemas/WorkOrderListItem" } },
+                        "total": { "type": "integer", "example": 100 },
+                        "page": { "type": "integer", "example": 1 },
+                        "pageSize": { "type": "integer", "example": 20 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}": {
+      "get": {
+        "tags": ["work-orders"],
+        "summary": "工单详情",
+        "description": "权限：登录用户",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderDetail" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["work-orders"],
+        "summary": "编辑工单（未派单时）",
+        "description": "权限：RESIDENT / ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WorkOrderUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderDetail" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/assign": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "派单",
+        "description": "权限：CUSTOMER_SERVICE / ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignRequest" },
+              "example": { "assigneeId": 5, "remark": "请尽快处理" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/accept": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "接单",
+        "description": "权限：ENGINEER",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RemarkRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/complete": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "完工",
+        "description": "权限：ENGINEER",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RemarkRequest" },
+              "example": { "remark": "已更换水管接头" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/close": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "关闭/归档",
+        "description": "权限：CUSTOMER_SERVICE / ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RemarkRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/cancel": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "取消工单",
+        "description": "权限：RESIDENT / CUSTOMER_SERVICE / ADMIN",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RemarkRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/rate": {
+      "post": {
+        "tags": ["work-orders"],
+        "summary": "评价",
+        "description": "权限：RESIDENT",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RateRequest" },
+              "example": { "rating": 5, "comment": "师傅响应快，态度好" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/WorkOrderBrief" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-orders/{id}/logs": {
+      "get": {
+        "tags": ["work-orders"],
+        "summary": "工单流转记录",
+        "description": "权限：登录用户",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/WorkOrderLog" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/overview": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "总览统计",
+        "description": "权限：ADMIN / CUSTOMER_SERVICE",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "$ref": "#/components/schemas/StatsOverview" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/trend": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "工单趋势",
+        "description": "权限：ADMIN / CUSTOMER_SERVICE",
+        "parameters": [
+          { "name": "period", "in": "query", "required": false, "schema": { "type": "string", "enum": ["day", "week", "month"] }, "description": "统计粒度" },
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "开始日期" },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "结束日期" }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/StatsTrendItem" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/type-distribution": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "报修类型分布",
+        "description": "权限：ADMIN / CUSTOMER_SERVICE",
+        "parameters": [
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/TypeDistributionItem" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/engineer-performance": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "维修工绩效",
+        "description": "权限：ADMIN / CUSTOMER_SERVICE",
+        "parameters": [
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer", "example": 0 },
+                    "message": { "type": "string", "example": "success" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/EngineerPerformanceItem" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/export": {
+      "get": {
+        "tags": ["stats"],
+        "summary": "导出统计报表",
+        "description": "权限：ADMIN / CUSTOMER_SERVICE，返回 Excel/CSV 文件流。",
+        "parameters": [
+          { "name": "startDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } },
+          { "name": "endDate", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件流",
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "登录后获取的 JWT，请求头：Authorization: Bearer <token>"
+      }
+    },
+    "parameters": {
+      "IdParam": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" },
+        "description": "主键ID"
+      },
+      "PageParam": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 1 },
+        "description": "页码，从 1 开始"
+      },
+      "PageSizeParam": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 20 },
+        "description": "每页条数"
+      },
+      "KeywordParam": {
+        "name": "keyword",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "关键字（模糊搜索）"
+      }
+    },
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "enum": ["RESIDENT", "CUSTOMER_SERVICE", "ENGINEER", "ADMIN"],
+        "description": "角色编码"
+      },
+      "UserStatus": {
+        "type": "string",
+        "enum": ["ACTIVE", "DISABLED"],
+        "description": "用户状态"
+      },
+      "WorkOrderStatus": {
+        "type": "string",
+        "enum": ["PENDING", "ASSIGNED", "PROCESSING", "COMPLETED", "CLOSED", "CANCELED"],
+        "description": "工单状态"
+      },
+      "WorkOrderPriority": {
+        "type": "string",
+        "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"],
+        "description": "工单优先级"
+      },
+      "WorkOrderType": {
+        "type": "string",
+        "enum": ["WATER", "ELECTRIC", "AIR", "LIFT", "FIRE", "CLEANING", "SECURITY", "OTHER"],
+        "description": "报修类型"
+      },
+      "WorkOrderAction": {
+        "type": "string",
+        "enum": ["CREATE", "ASSIGN", "ACCEPT", "COMPLETE", "CLOSE", "CANCEL", "RATE"],
+        "description": "工单动作编码"
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "description": "登录名" },
+          "password": { "type": "string", "description": "密码" }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "username": { "type": "string" },
+          "realName": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" }
+        }
+      },
+      "LoginData": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT Token" },
+          "user": { "$ref": "#/components/schemas/UserInfo" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "username": { "type": "string" },
+          "realName": { "type": "string" },
+          "phone": { "type": "string", "nullable": true },
+          "email": { "type": "string", "nullable": true },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "status": { "$ref": "#/components/schemas/UserStatus" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "UserBrief": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "realName": { "type": "string" },
+          "phone": { "type": "string", "nullable": true }
+        }
+      },
+      "UserCreateRequest": {
+        "type": "object",
+        "required": ["username", "password", "realName", "role"],
+        "properties": {
+          "username": { "type": "string" },
+          "password": { "type": "string" },
+          "realName": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "status": { "$ref": "#/components/schemas/UserStatus" }
+        }
+      },
+      "UserUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "realName": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/Role" },
+          "status": { "$ref": "#/components/schemas/UserStatus" }
+        }
+      },
+      "PasswordResetRequest": {
+        "type": "object",
+        "required": ["newPassword"],
+        "properties": {
+          "newPassword": { "type": "string", "description": "新密码" }
+        }
+      },
+      "WorkOrderCreateRequest": {
+        "type": "object",
+        "required": ["title", "type"],
+        "properties": {
+          "title": { "type": "string", "description": "工单标题" },
+          "description": { "type": "string", "description": "问题描述" },
+          "type": { "$ref": "#/components/schemas/WorkOrderType" },
+          "priority": { "$ref": "#/components/schemas/WorkOrderPriority" },
+          "images": { "type": "array", "items": { "type": "string" }, "description": "附件图片URL数组" }
+        }
+      },
+      "WorkOrderUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/WorkOrderType" },
+          "priority": { "$ref": "#/components/schemas/WorkOrderPriority" },
+          "images": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "AssignRequest": {
+        "type": "object",
+        "required": ["assigneeId"],
+        "properties": {
+          "assigneeId": { "type": "integer", "format": "int64", "description": "维修工用户ID" },
+          "remark": { "type": "string", "description": "备注" }
+        }
+      },
+      "RemarkRequest": {
+        "type": "object",
+        "properties": {
+          "remark": { "type": "string", "description": "备注说明" }
+        }
+      },
+      "RateRequest": {
+        "type": "object",
+        "required": ["rating"],
+        "properties": {
+          "rating": { "type": "integer", "minimum": 1, "maximum": 5, "description": "评价星级（1-5）" },
+          "comment": { "type": "string", "description": "评价内容" }
+        }
+      },
+      "WorkOrderListItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "orderNo": { "type": "string" },
+          "title": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/WorkOrderType" },
+          "priority": { "$ref": "#/components/schemas/WorkOrderPriority" },
+          "status": { "$ref": "#/components/schemas/WorkOrderStatus" },
+          "reporterName": { "type": "string" },
+          "assigneeName": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WorkOrderDetail": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "orderNo": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "type": { "$ref": "#/components/schemas/WorkOrderType" },
+          "priority": { "$ref": "#/components/schemas/WorkOrderPriority" },
+          "status": { "$ref": "#/components/schemas/WorkOrderStatus" },
+          "images": { "type": "array", "items": { "type": "string" } },
+          "reporter": { "$ref": "#/components/schemas/UserBrief" },
+          "assignee": { "$ref": "#/components/schemas/UserBrief" },
+          "assignTime": { "type": "string", "format": "date-time", "nullable": true },
+          "acceptTime": { "type": "string", "format": "date-time", "nullable": true },
+          "finishTime": { "type": "string", "format": "date-time", "nullable": true },
+          "closeTime": { "type": "string", "format": "date-time", "nullable": true },
+          "rating": { "type": "integer", "description": "评价星级（0表示未评价）" },
+          "ratingComment": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WorkOrderBrief": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "orderNo": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/WorkOrderStatus" }
+        }
+      },
+      "WorkOrderLog": {
+        "type": "object",
+        "properties": {
+          "action": { "$ref": "#/components/schemas/WorkOrderAction" },
+          "operatorName": { "type": "string" },
+          "fromStatus": { "$ref": "#/components/schemas/WorkOrderStatus" },
+          "toStatus": { "$ref": "#/components/schemas/WorkOrderStatus" },
+          "remark": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "StatsOverview": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "description": "工单总数" },
+          "pending": { "type": "integer", "description": "待派单" },
+          "processing": { "type": "integer", "description": "处理中" },
+          "completed": { "type": "integer", "description": "已完成" },
+          "closed": { "type": "integer", "description": "已关闭" },
+          "avgHandleHours": { "type": "number", "format": "double", "description": "平均处理时长（小时）" },
+          "avgRating": { "type": "number", "format": "double", "description": "平均满意度" }
+        }
+      },
+      "StatsTrendItem": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "description": "统计日期/周期" },
+          "count": { "type": "integer", "description": "工单数量" }
+        }
+      },
+      "TypeDistributionItem": {
+        "type": "object",
+        "properties": {
+          "type": { "$ref": "#/components/schemas/WorkOrderType" },
+          "count": { "type": "integer" }
+        }
+      },
+      "EngineerPerformanceItem": {
+        "type": "object",
+        "properties": {
+          "engineerId": { "type": "integer", "format": "int64" },
+          "engineerName": { "type": "string" },
+          "totalOrders": { "type": "integer" },
+          "avgHandleHours": { "type": "number", "format": "double" },
+          "avgRating": { "type": "number", "format": "double" }
+        }
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ]
+}

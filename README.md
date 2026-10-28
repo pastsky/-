@@ -22,9 +22,9 @@
 ## 快速开始
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/pastsky/-.git
-cd -
+# 1. 克隆仓库（仓库名为 -，这里显式指定目录名，避免 cd - 变成切回上一个目录）
+git clone https://github.com/pastsky/-.git property-workorder-frontend
+cd property-workorder-frontend
 
 # 2. 安装依赖
 npm install
@@ -52,16 +52,13 @@ npm run dev
 
 ### 2. 联调真实后端
 
-后端服务就绪并运行在 `8080` 端口后，将 `vite.config.js` 中 Mock 关闭：
+后端服务运行在 `8080` 端口后，用专门的联调命令启动（无需改代码）：
 
-```js
-viteMockServe({
-  mockPath: 'mock',
-  enable: false   // 改为 false，然后重启 npm run dev
-})
+```bash
+npm run dev:real
 ```
 
-关闭后前端会把 `/api` 代理到 `http://localhost:8080`，走后端真实接口。
+该命令读取 `.env.real`（`VITE_USE_MOCK=false`），关闭本地 Mock，前端把 `/api` 与 `/uploads` 都代理到 `http://localhost:8080`，走真实接口与真实图片。
 
 ## 目录结构
 
@@ -86,9 +83,10 @@ property-workorder-frontend/
 │   │   └── stats/             # 统计报表
 │   ├── App.vue
 │   └── main.js
-├── .env.development           # VITE_API_BASE_URL=/api
+├── .env.development           # Mock 模式：VITE_API_BASE_URL=/api
+├── .env.real                  # 联调模式：VITE_USE_MOCK=false
 ├── .env.production
-├── vite.config.js             # 含 /api 代理与 Mock 开关
+├── vite.config.js             # 含 /api、/uploads 代理与 Mock 开关
 └── package.json
 ```
 

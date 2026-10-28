@@ -34,5 +34,9 @@ Thumbs.db
 # 测试覆盖率
 coverage/
 
+# Playwright 产物
+test-results/
+playwright-report/
+
 # 其他临时文件
 *.local

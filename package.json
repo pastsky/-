@@ -4,21 +4,25 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "dev:real": "vite --mode real",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
-    "pinia": "^2.1.7",
-    "element-plus": "^2.6.1",
     "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.6.8",
-    "echarts": "^5.5.0"
+    "echarts": "^5.5.0",
+    "element-plus": "^2.6.1",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
-    "vite": "^5.2.0",
+    "@playwright/test": "^1.64.1",
     "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.0",
     "vite-plugin-mock": "^3.0.2"
   }
 }

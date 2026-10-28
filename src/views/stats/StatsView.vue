@@ -2,7 +2,7 @@
   <div>
     <el-row :gutter="16">
       <el-col v-for="card in overviewCards" :key="card.label" :span="4">
-        <el-card class="metric-card">
+        <el-card class="metric-card" shadow="hover">
           <div class="metric-value">{{ card.value }}</div>
           <div class="metric-label">{{ card.label }}</div>
         </el-card>
@@ -12,7 +12,16 @@
     <el-row :gutter="16" class="charts">
       <el-col :span="16">
         <el-card>
-          <template #header>工单趋势</template>
+          <template #header>
+            <div class="card-header">
+              <span>工单趋势</span>
+              <el-radio-group v-model="granularity" size="small" @change="loadTrend">
+                <el-radio-button value="day">日</el-radio-button>
+                <el-radio-button value="week">周</el-radio-button>
+                <el-radio-button value="month">月</el-radio-button>
+              </el-radio-group>
+            </div>
+          </template>
           <div ref="trendRef" class="chart"></div>
         </el-card>
       </el-col>
@@ -33,7 +42,7 @@
       </template>
       <el-table :data="performance">
         <el-table-column prop="engineerName" label="维修工" width="140" />
-        <el-table-column prop="totalOrders" label="工单数" width="120" />
+        <el-table-column prop="total" label="完工单数" width="120" />
         <el-table-column label="平均处理时长（小时）">
           <template #default="{ row }">{{ row.avgHandleHours }}</template>
         </el-table-column>
@@ -55,9 +64,10 @@ import { getStatsOverview, getStatsTrend, getTypeDistribution, getEngineerPerfor
 import { WORK_ORDER_TYPE_MAP } from '@/utils/dict'
 
 const overview = ref({})
-const trend = ref([])
+const trend = ref({ labels: [], created: [], completed: [] })
 const typeDist = ref([])
 const performance = ref([])
+const granularity = ref('day')
 const trendRef = ref()
 const typeRef = ref()
 
@@ -67,8 +77,11 @@ let typeChart = null
 const overviewCards = computed(() => [
   { label: '工单总数', value: overview.value.total ?? 0 },
   { label: '待派单', value: overview.value.pending ?? 0 },
+  { label: '已派单', value: overview.value.assigned ?? 0 },
   { label: '处理中', value: overview.value.processing ?? 0 },
   { label: '已完成', value: overview.value.completed ?? 0 },
+  { label: '已关闭', value: overview.value.closed ?? 0 },
+  { label: '已取消', value: overview.value.canceled ?? 0 },
   { label: '平均时长(h)', value: overview.value.avgHandleHours ?? 0 },
   { label: '平均满意度', value: overview.value.avgRating ?? 0 }
 ])
@@ -81,15 +94,23 @@ function initCharts() {
 function renderTrend() {
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
-    grid: { left: 40, right: 20, top: 20, bottom: 30 },
-    xAxis: { type: 'category', data: trend.value.map((t) => t.date) },
+    legend: { data: ['新建', '完工'], top: 0 },
+    grid: { left: 40, right: 20, top: 40, bottom: 30 },
+    xAxis: { type: 'category', data: trend.value.labels || [], boundaryGap: false },
     yAxis: { type: 'value', minInterval: 1 },
     series: [
       {
+        name: '新建',
         type: 'line',
         smooth: true,
-        data: trend.value.map((t) => t.count),
-        areaStyle: { opacity: 0.15 }
+        data: trend.value.created || [],
+        areaStyle: { opacity: 0.12 }
+      },
+      {
+        name: '完工',
+        type: 'line',
+        smooth: true,
+        data: trend.value.completed || []
       }
     ]
   })
@@ -114,20 +135,24 @@ function renderType() {
   })
 }
 
+async function loadTrend() {
+  trend.value = await getStatsTrend({ granularity: granularity.value })
+  renderTrend()
+}
+
 async function loadData() {
   overview.value = await getStatsOverview()
-  trend.value = await getStatsTrend()
   typeDist.value = await getTypeDistribution()
   performance.value = await getEngineerPerformance()
-  renderTrend()
   renderType()
+  await loadTrend()
 }
 
 function handleExport() {
-  const header = ['维修工', '工单数', '平均处理时长(小时)', '平均满意度']
+  const header = ['维修工', '完工单数', '平均处理时长(小时)', '平均满意度']
   const rows = performance.value.map((p) => [
     p.engineerName,
-    p.totalOrders,
+    p.total,
     p.avgHandleHours,
     p.avgRating
   ])
@@ -179,9 +204,6 @@ onUnmounted(() => {
 }
 .chart {
   height: 300px;
-}
-.section {
-  margin-top: 0;
 }
 .card-header {
   display: flex;

@@ -57,7 +57,8 @@
 
     <el-table v-loading="loading" :data="list" class="table" @row-click="goDetail">
       <el-table-column prop="orderNo" label="工单号" width="170" />
-      <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="location" label="位置" width="140" show-overflow-tooltip />
       <el-table-column label="类型" width="90">
         <template #default="{ row }">{{ WORK_ORDER_TYPE_MAP[row.type] }}</template>
       </el-table-column>

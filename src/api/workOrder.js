@@ -36,6 +36,10 @@ export function cancelWorkOrder(id, data) {
   return request.post(`/work-orders/${id}/cancel`, data)
 }
 
+export function returnWorkOrder(id, data) {
+  return request.post(`/work-orders/${id}/return`, data)
+}
+
 export function rateWorkOrder(id, data) {
   return request.post(`/work-orders/${id}/rate`, data)
 }

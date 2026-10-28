@@ -97,9 +97,19 @@ export const USER_STATUS_OPTIONS = [
 export const WORK_ORDER_ACTION_MAP = {
   CREATE: '创建',
   ASSIGN: '派单',
+  RETURN: '退回',
   ACCEPT: '接单',
   COMPLETE: '完工',
   CLOSE: '关闭',
   CANCEL: '取消',
   RATE: '评价'
+}
+
+export const NOTIFICATION_TYPE_MAP = {
+  ASSIGNED: '派单',
+  ACCEPTED: '接单',
+  COMPLETED: '完工',
+  CANCELED: '取消',
+  RATED: '评价',
+  RETURNED: '退回'
 }

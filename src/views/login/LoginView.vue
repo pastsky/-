@@ -1,10 +1,13 @@
 <template>
   <div class="login">
-    <el-card class="login-card">
-      <h2 class="title">物业工单管理平台</h2>
+    <el-card class="login-card" shadow="always">
+      <div class="brand">
+        <h2 class="title">物业工单管理平台</h2>
+        <p class="subtitle">Property Work Order Management</p>
+      </div>
       <el-form :model="form">
         <el-form-item>
-          <el-input v-model="form.username" placeholder="用户名" />
+          <el-input v-model="form.username" placeholder="用户名" size="large" />
         </el-form-item>
         <el-form-item>
           <el-input
@@ -12,11 +15,12 @@
             type="password"
             placeholder="密码"
             show-password
+            size="large"
             @keyup.enter="handleLogin"
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" class="submit" :loading="loading" @click="handleLogin">
+          <el-button type="primary" size="large" class="submit" :loading="loading" @click="handleLogin">
             登录
           </el-button>
         </el-form-item>
@@ -56,17 +60,32 @@ async function handleLogin() {
 
 <style scoped>
 .login {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #1e3a8a 100%);
 }
 .login-card {
-  width: 380px;
+  width: 400px;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+.brand {
+  text-align: center;
+  margin-bottom: 24px;
 }
 .title {
-  text-align: center;
-  margin: 0 0 20px;
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f2937;
+}
+.subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #9ca3af;
 }
 .submit {
   width: 100%;
@@ -74,7 +93,8 @@ async function handleLogin() {
 .tip {
   margin: 0;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: #9ca3af;
   text-align: center;
+  line-height: 1.6;
 }
 </style>

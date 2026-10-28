@@ -25,12 +25,15 @@
     </div>
 
     <el-table v-loading="loading" :data="list">
-      <el-table-column prop="username" label="用户名" width="140" />
-      <el-table-column prop="realName" label="姓名" width="120" />
-      <el-table-column label="角色" width="110">
+      <el-table-column prop="username" label="用户名" width="130" />
+      <el-table-column prop="realName" label="姓名" width="110" />
+      <el-table-column label="角色" width="100">
         <template #default="{ row }">{{ ROLE_MAP[row.role] }}</template>
       </el-table-column>
-      <el-table-column prop="phone" label="手机号" width="140" />
+      <el-table-column prop="phone" label="手机号" width="130" />
+      <el-table-column prop="address" label="地址" min-width="140" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.address || '—' }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
@@ -59,10 +62,10 @@
       @current-change="loadData"
     />
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="480px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="500px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" :disabled="isEdit" placeholder="登录账号" />
+          <el-input v-model="form.username" placeholder="登录账号" />
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="form.password" placeholder="初始密码" />
@@ -75,6 +78,9 @@
         </el-form-item>
         <el-form-item label="邮箱">
           <el-input v-model="form.email" />
+        </el-form-item>
+        <el-form-item label="地址">
+          <el-input v-model="form.address" placeholder="楼栋/单元/房间（业主必填）" />
         </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="form.role" style="width: 100%">
@@ -94,7 +100,7 @@
     <el-dialog v-model="resetVisible" title="重置密码" width="420px">
       <el-form label-width="80px">
         <el-form-item label="新密码">
-          <el-input v-model="newPassword" placeholder="请输入新密码" />
+          <el-input v-model="newPassword" placeholder="6-32 位字符" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -130,6 +136,7 @@ const form = reactive({
   realName: '',
   phone: '',
   email: '',
+  address: '',
   role: '',
   status: 'ACTIVE'
 })
@@ -181,6 +188,7 @@ function resetForm() {
   form.realName = ''
   form.phone = ''
   form.email = ''
+  form.address = ''
   form.role = ''
   form.status = 'ACTIVE'
 }
@@ -200,6 +208,7 @@ function openEdit(row) {
   form.realName = row.realName
   form.phone = row.phone || ''
   form.email = row.email || ''
+  form.address = row.address || ''
   form.role = row.role
   form.status = row.status
   dialogVisible.value = true
@@ -208,9 +217,11 @@ function openEdit(row) {
 async function handleSubmit() {
   await formRef.value.validate()
   const payload = {
+    username: form.username,
     realName: form.realName,
     phone: form.phone,
     email: form.email,
+    address: form.address,
     role: form.role,
     status: form.status
   }
@@ -220,7 +231,7 @@ async function handleSubmit() {
       await updateUser(editId.value, payload)
       ElMessage.success('保存成功')
     } else {
-      await createUser({ ...payload, username: form.username, password: form.password })
+      await createUser({ ...payload, password: form.password })
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -241,13 +252,13 @@ async function submitReset() {
     ElMessage.warning('请输入新密码')
     return
   }
-  await resetPassword(resetId.value, { newPassword: newPassword.value })
+  await resetPassword(resetId.value, { password: newPassword.value })
   ElMessage.success('密码已重置')
   resetVisible.value = false
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除用户「${row.realName}」？`, '删除确认', { type: 'warning' })
+  await ElMessageBox.confirm(`确认删除用户「${row.realName}」？删除后将置为禁用状态。`, '删除确认', { type: 'warning' })
   await deleteUser(row.id)
   ElMessage.success('已删除')
   loadData()

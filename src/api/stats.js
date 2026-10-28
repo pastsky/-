@@ -1,3 +1,21 @@
 import request from '@/utils/request'
 
-// TODO: 按规范第 6.5.4 节补充统计报表接口
+export function getStatsOverview() {
+  return request.get('/stats/overview')
+}
+
+export function getStatsTrend(params) {
+  return request.get('/stats/trend', { params })
+}
+
+export function getTypeDistribution(params) {
+  return request.get('/stats/type-distribution', { params })
+}
+
+export function getEngineerPerformance(params) {
+  return request.get('/stats/engineer-performance', { params })
+}
+
+export function exportStats(params) {
+  return request.get('/stats/export', { params })
+}

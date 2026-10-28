@@ -21,6 +21,7 @@
           </el-button>
         </el-form-item>
       </el-form>
+      <p class="tip">测试账号：admin / cs001 / engineer001 / resident001（密码均为 123456）</p>
     </el-card>
   </div>
 </template>
@@ -29,10 +30,10 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { login } from '@/api/auth'
-import { setToken } from '@/utils/auth'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 const loading = ref(false)
 const form = reactive({ username: '', password: '' })
 
@@ -43,9 +44,10 @@ async function handleLogin() {
   }
   loading.value = true
   try {
-    const data = await login(form)
-    setToken(data.token)
+    await userStore.login(form)
     router.push('/')
+  } catch (e) {
+    // 错误已由 request 拦截器统一提示
   } finally {
     loading.value = false
   }
@@ -60,7 +62,7 @@ async function handleLogin() {
   height: 100vh;
 }
 .login-card {
-  width: 360px;
+  width: 380px;
 }
 .title {
   text-align: center;
@@ -68,5 +70,11 @@ async function handleLogin() {
 }
 .submit {
   width: 100%;
+}
+.tip {
+  margin: 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  text-align: center;
 }
 </style>

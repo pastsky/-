@@ -149,19 +149,48 @@ async function loadData() {
 }
 
 function handleExport() {
-  const header = ['维修工', '完工单数', '平均处理时长(小时)', '平均满意度']
-  const rows = performance.value.map((p) => [
-    p.engineerName,
-    p.total,
-    p.avgHandleHours,
-    p.avgRating
-  ])
-  const csv = [header, ...rows].map((r) => r.join(',')).join('\n')
+  const o = overview.value
+  const t = trend.value
+  const sections = []
+
+  const overviewRows = [
+    ['指标', '数值'],
+    ['工单总数', o.total ?? 0],
+    ['待派单', o.pending ?? 0],
+    ['已派单', o.assigned ?? 0],
+    ['处理中', o.processing ?? 0],
+    ['已完成', o.completed ?? 0],
+    ['已关闭', o.closed ?? 0],
+    ['已取消', o.canceled ?? 0],
+    ['平均处理时长(小时)', o.avgHandleHours ?? 0],
+    ['平均满意度', o.avgRating ?? 0]
+  ]
+  sections.push(['【统计总览】', ...overviewRows.map((r) => r.join(','))].join('\n'))
+
+  const trendRows = [
+    ['日期', '新建', '完工'],
+    ...(t.labels || []).map((label, i) => [label, t.created?.[i] ?? 0, t.completed?.[i] ?? 0])
+  ]
+  sections.push(['【工单趋势】', ...trendRows.map((r) => r.join(','))].join('\n'))
+
+  const typeRows = [
+    ['类型', '数量'],
+    ...typeDist.value.map((item) => [WORK_ORDER_TYPE_MAP[item.type] || item.type, item.count])
+  ]
+  sections.push(['【报修类型分布】', ...typeRows.map((r) => r.join(','))].join('\n'))
+
+  const perfRows = [
+    ['维修工', '完工单数', '平均处理时长(小时)', '平均满意度'],
+    ...performance.value.map((p) => [p.engineerName, p.total, p.avgHandleHours, p.avgRating])
+  ]
+  sections.push(['【维修工绩效】', ...perfRows.map((r) => r.join(','))].join('\n'))
+
+  const csv = sections.join('\n\n')
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = '维修工绩效报表.csv'
+  a.download = `统计报表_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }

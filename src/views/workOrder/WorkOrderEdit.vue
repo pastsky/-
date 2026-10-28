@@ -59,7 +59,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { createWorkOrder, updateWorkOrder, getWorkOrderDetail } from '@/api/workOrder'
-import { uploadImage } from '@/api/file'
+import { uploadImage, compressImage } from '@/api/file'
 import { useUserStore } from '@/stores/user'
 import { WORK_ORDER_TYPE_OPTIONS, WORK_ORDER_PRIORITY_OPTIONS } from '@/utils/dict'
 
@@ -107,12 +107,14 @@ onMounted(async () => {
   }
 })
 
-function handleUpload(options) {
-  uploadImage(options.file)
-    .then((url) => {
-      options.onSuccess(url)
-    })
-    .catch((e) => options.onError(e))
+async function handleUpload(options) {
+  try {
+    const compressed = await compressImage(options.file)
+    const url = await uploadImage(compressed)
+    options.onSuccess(url)
+  } catch (e) {
+    options.onError(e)
+  }
 }
 
 function handleRemove(file) {

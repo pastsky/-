@@ -32,7 +32,19 @@ request.interceptors.response.use(
     return Promise.reject(new Error(res.message || '请求失败'))
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
+    if (error.response) {
+      const status = error.response.status
+      const msg = error.response.data?.message
+      if (status === 401) {
+        clearToken()
+        ElMessage.error(msg || '登录已过期，请重新登录')
+        window.location.href = '/login'
+      } else {
+        ElMessage.error(msg || error.message || '请求失败')
+      }
+    } else {
+      ElMessage.error(error.message || '网络错误')
+    }
     return Promise.reject(error)
   }
 )

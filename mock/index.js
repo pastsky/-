@@ -266,9 +266,16 @@ export default [
   {
     url: '/api/users/:id',
     method: 'delete',
-    response: ({ query }) => {
+    response: ({ query, headers }) => {
       const user = findUser(query.id)
       if (!user) return fail(4000, '用户不存在')
+      if (getUserId(headers) === Number(query.id)) return fail(1000, '不能删除自己')
+      const hasUnfinished = workOrders.some(
+        (o) =>
+          (o.reporterId === Number(query.id) || o.assigneeId === Number(query.id)) &&
+          !['CLOSED', 'CANCELED'].includes(o.status)
+      )
+      if (hasUnfinished) return fail(1000, '该用户存在未完结工单，无法删除')
       user.status = 'DISABLED'
       user.updatedAt = now()
       return ok(null)
@@ -391,6 +398,11 @@ export default [
       order.status = 'PENDING'
       order.updatedAt = now()
       addLog(order.id, getUserId(headers), 'RETURN', from, 'PENDING', b.remark)
+      users
+        .filter((u) => u.role === 'CUSTOMER_SERVICE' && u.status === 'ACTIVE')
+        .forEach((cs) =>
+          addNotification(cs.id, '工单被退回', `工单 ${order.orderNo} 被退回，请重新派单`, 'RETURNED', order.id)
+        )
       return ok({ id: order.id, status: order.status })
     }
   },

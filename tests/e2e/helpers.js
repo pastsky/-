@@ -6,7 +6,9 @@ export const ACCOUNTS = {
   engineer: { id: 3, username: 'engineer001', realName: '李师傅' },
   engineer2: { id: 4, username: 'engineer002', realName: '王师傅' },
   resident: { id: 5, username: 'resident001', realName: '张三' },
-  resident2: { id: 6, username: 'resident002', realName: '李四' }
+  resident2: { id: 6, username: 'resident002', realName: '李四' },
+  vendorAdmin: { id: 8, username: 'vendor001', realName: '乙方刘经理' },
+  vendorEngineer: { id: 9, username: 'vendoreng001', realName: '外委赵师傅' }
 }
 
 export const PASSWORD = '123456'
@@ -36,10 +38,9 @@ export function formItem(page, label) {
     .first()
 }
 
-// 选择 Element Plus 下拉项（文本完全匹配）
+// 选择 Element Plus 下拉项（只点当前可见的下拉）
 export async function selectOption(page, label, optionText) {
   await formItem(page, label).locator('.el-select').click()
-  // 页面可能存在多个已渲染但隐藏的下拉，只点当前可见的那个
   await page
     .locator('.el-select-dropdown__item:visible', { hasText: new RegExp(`^${optionText}$`) })
     .first()
@@ -47,12 +48,12 @@ export async function selectOption(page, label, optionText) {
 }
 
 // 确认 Element Plus 弹窗（MessageBox）：有输入框时填备注，再点主按钮
-export async function confirmBox(page, confirm = true) {
+export async function confirmBox(page, confirm = true, inputText = 'E2E 自动化测试') {
   const box = page.locator('.el-message-box').last()
   await box.waitFor({ state: 'visible' })
   const input = box.locator('.el-message-box__input input')
   if (confirm && (await input.count()) && (await input.isVisible())) {
-    await input.fill('E2E 自动化测试')
+    await input.fill(inputText)
   }
   if (confirm) {
     await box.locator('.el-message-box__btns .el-button--primary').click()
@@ -66,3 +67,14 @@ export async function confirmBox(page, confirm = true) {
 export function tableRow(page, text) {
   return page.locator('.el-table__body-wrapper tr').filter({ hasText: text }).first()
 }
+
+// 最近一条成功/错误提示
+export function lastMessage(page, type = 'success') {
+  return page.locator(`.el-message--${type}`).last()
+}
+
+// 最小 PNG（1x1），用于完工图片上传
+export const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+)

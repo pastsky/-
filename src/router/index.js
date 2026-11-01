@@ -14,6 +14,12 @@ const routes = [
     redirect: '/work-orders',
     children: [
       {
+        path: 'dispatch',
+        name: 'Dispatch',
+        component: () => import('@/views/dispatch/DispatchWorkbench.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] }
+      },
+      {
         path: 'work-orders',
         name: 'WorkOrderList',
         component: () => import('@/views/workOrder/WorkOrderList.vue')
@@ -22,13 +28,19 @@ const routes = [
         path: 'work-orders/create',
         name: 'WorkOrderCreate',
         component: () => import('@/views/workOrder/WorkOrderEdit.vue'),
-        meta: { roles: ['RESIDENT', 'ADMIN'] }
+        meta: { roles: ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'] }
+      },
+      {
+        path: 'work-orders/pool',
+        name: 'WorkOrderPool',
+        component: () => import('@/views/workOrder/WorkOrderPool.vue'),
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
       },
       {
         path: 'work-orders/:id/edit',
         name: 'WorkOrderEdit',
         component: () => import('@/views/workOrder/WorkOrderEdit.vue'),
-        meta: { roles: ['RESIDENT', 'ADMIN'] }
+        meta: { roles: ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'work-orders/:id',
@@ -36,15 +48,27 @@ const routes = [
         component: () => import('@/views/workOrder/WorkOrderDetail.vue')
       },
       {
+        path: 'calendar',
+        name: 'RepairerCalendar',
+        component: () => import('@/views/calendar/RepairerCalendar.vue'),
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
         path: 'users',
         name: 'UserList',
         component: () => import('@/views/user/UserList.vue'),
-        meta: { roles: ['ADMIN'] }
+        meta: { roles: ['ADMIN', 'BRANCH_ADMIN'] }
       },
       {
         path: 'stats',
         name: 'Stats',
         component: () => import('@/views/stats/StatsView.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] }
+      },
+      {
+        path: 'broadcast',
+        name: 'Broadcast',
+        component: () => import('@/views/notification/BroadcastCenter.vue'),
         meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       }
     ]

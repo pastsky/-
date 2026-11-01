@@ -11,3 +11,12 @@ export function markNotificationRead(id) {
 export function markAllNotificationsRead() {
   return request.put('/notifications/read-all')
 }
+
+// 广播：targetScope = ALL / ROLE / BRANCH
+export function broadcastNotification(data) {
+  return request.post('/notifications/broadcast', data)
+}
+
+export function getBroadcastList() {
+  return request.get('/notifications/broadcast')
+}

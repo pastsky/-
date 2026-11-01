@@ -1,26 +1,47 @@
-// 前后端共享的业务枚举中文映射与展示配置
+// 前后端共享的业务枚举中文映射与展示配置（对齐 v1.0 增量设计 v12 终版）
 
+// ============ 角色 ============
 export const ROLE_MAP = {
   RESIDENT: '业主',
   CUSTOMER_SERVICE: '客服',
   ENGINEER: '维修工',
-  ADMIN: '管理员'
+  VENDOR_ENGINEER: '乙方检修员',
+  BRANCH_ADMIN: '分公司管理员',
+  VENDOR_ADMIN: '乙方管理员',
+  ADMIN: '平台管理员'
 }
 
 export const ROLE_OPTIONS = [
   { value: 'RESIDENT', label: '业主' },
   { value: 'CUSTOMER_SERVICE', label: '客服' },
   { value: 'ENGINEER', label: '维修工' },
-  { value: 'ADMIN', label: '管理员' }
+  { value: 'VENDOR_ENGINEER', label: '乙方检修员' },
+  { value: 'BRANCH_ADMIN', label: '分公司管理员' },
+  { value: 'VENDOR_ADMIN', label: '乙方管理员' },
+  { value: 'ADMIN', label: '平台管理员' }
 ]
 
+// 管理端可登录角色（业主端 / 维修工端为独立 H5 工程）
+export const MANAGEMENT_ROLES = ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN']
+// 可执行维修动作的角色
+export const REPAIRER_ROLES = ['ENGINEER', 'VENDOR_ENGINEER']
+
+// ============ 工单状态 ============
+// 状态机定版（以《工单生命周期与调度机制设计归档》为准）：
+//   PENDING --ASSIGN/GRAB--> ASSIGNED --ACCEPT--> PROCESSING --COMPLETE--> COMPLETED（瞬态）
+//   COMPLETED --待回访--> PENDING_REVIEW --回访/评价--> CLOSED；回访不满意 --REJECT--> PROCESSING
+//   PENDING/ASSIGNED --CANCEL--> CANCELED；ASSIGNED --RETURN--> PENDING 或入池
+// 抢单与派单出口一致（都进入 ASSIGNED），维修工仍需 ACCEPT 才进入 PROCESSING，
+// 以保证「ASSIGNED 超时未接回池」升级链对抢单同样生效、acceptTime 代表实际开工。
 export const WORK_ORDER_STATUS_MAP = {
   PENDING: '待派单',
   ASSIGNED: '待接单',
   PROCESSING: '处理中',
-  COMPLETED: '已完成',
+  COMPLETED: '已完工',
+  PENDING_REVIEW: '待回访',
   CLOSED: '已关闭',
-  CANCELED: '已取消'
+  CANCELED: '已取消',
+  ESCALATED_FINAL: '升级终态'
 }
 
 export const WORK_ORDER_STATUS_TAG = {
@@ -28,19 +49,23 @@ export const WORK_ORDER_STATUS_TAG = {
   ASSIGNED: 'primary',
   PROCESSING: 'primary',
   COMPLETED: 'success',
+  PENDING_REVIEW: 'warning',
   CLOSED: 'info',
-  CANCELED: 'danger'
+  CANCELED: 'danger',
+  ESCALATED_FINAL: 'danger'
 }
 
-export const WORK_ORDER_STATUS_OPTIONS = [
-  { value: 'PENDING', label: '待派单' },
-  { value: 'ASSIGNED', label: '待接单' },
-  { value: 'PROCESSING', label: '处理中' },
-  { value: 'COMPLETED', label: '已完成' },
-  { value: 'CLOSED', label: '已关闭' },
-  { value: 'CANCELED', label: '已取消' }
-]
+export const WORK_ORDER_STATUS_OPTIONS = Object.keys(WORK_ORDER_STATUS_MAP).map((value) => ({
+  value,
+  label: WORK_ORDER_STATUS_MAP[value]
+}))
 
+// 归档态：核心字段只读
+export const ARCHIVED_STATUS = ['CLOSED', 'CANCELED', 'ESCALATED_FINAL']
+// 在途态：占用维修工并发额度
+export const UNFINISHED_STATUS = ['PENDING', 'ASSIGNED', 'PROCESSING', 'PENDING_REVIEW']
+
+// ============ 优先级 ============
 export const WORK_ORDER_PRIORITY_MAP = {
   LOW: '低',
   MEDIUM: '中',
@@ -62,6 +87,9 @@ export const WORK_ORDER_PRIORITY_OPTIONS = [
   { value: 'URGENT', label: '紧急' }
 ]
 
+export const PRIORITY_WEIGHT = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+
+// ============ 工单类型 ============
 export const WORK_ORDER_TYPE_MAP = {
   WATER: '水',
   ELECTRIC: '电',
@@ -73,37 +101,65 @@ export const WORK_ORDER_TYPE_MAP = {
   OTHER: '其他'
 }
 
-export const WORK_ORDER_TYPE_OPTIONS = [
-  { value: 'WATER', label: '水' },
-  { value: 'ELECTRIC', label: '电' },
-  { value: 'AIR', label: '空调' },
-  { value: 'LIFT', label: '电梯' },
-  { value: 'FIRE', label: '消防' },
-  { value: 'CLEANING', label: '保洁' },
-  { value: 'SECURITY', label: '安保' },
-  { value: 'OTHER', label: '其他' }
-]
+export const WORK_ORDER_TYPE_OPTIONS = Object.keys(WORK_ORDER_TYPE_MAP).map((value) => ({
+  value,
+  label: WORK_ORDER_TYPE_MAP[value]
+}))
 
-export const USER_STATUS_MAP = {
-  ACTIVE: '启用',
-  DISABLED: '禁用'
-}
+// 电梯类工单必须选择电梯档案
+export const ELEVATOR_REQUIRED_TYPES = ['LIFT']
 
-export const USER_STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: '启用' },
-  { value: 'DISABLED', label: '禁用' }
-]
-
+// ============ 动作（work_order_log.action） ============
 export const WORK_ORDER_ACTION_MAP = {
   CREATE: '创建',
   ASSIGN: '派单',
+  GRAB: '抢单',
   RETURN: '退回',
+  TRANSFER: '转交',
   ACCEPT: '接单',
   COMPLETE: '完工',
+  REJECT: '完工驳回',
+  REVIEW_RESULT: '回访',
   CLOSE: '关闭',
   CANCEL: '取消',
-  RATE: '评价'
+  RATE: '评价',
+  REMARK: '内部备注',
+  ESCALATE: '超时升级'
 }
+
+// ============ 待抢单池 ============
+export const POOL_FLAG_MAP = { 0: '常规', 1: '待抢单' }
+
+// 抢单失败的 5 类强校验原因（v12 #1）
+export const GRAB_FAIL_REASON = {
+  1002: '数据权限不足',
+  3002: '缺少对应证书',
+  3003: '当前不在值班状态',
+  3004: '存在在途工单未完成',
+  3005: '与该电梯/维修工的预约时间冲突'
+}
+
+// ============ 回访结果 ============
+export const REVIEW_RESULT_MAP = {
+  SATISFIED: '满意，归档',
+  UNSATISFIED: '不满意，返工',
+  TIMEOUT_AUTO: '超时默认好评'
+}
+
+// ============ 工单来源 ============
+export const WORK_ORDER_SOURCE_MAP = {
+  USER_REPORT: '业主报修',
+  CS_ASSIGN: '客服受理',
+  PLAN_TASK: '计划任务',
+  INSPECTION: '巡检异常'
+}
+
+// ============ 通知 ============
+export const USER_STATUS_MAP = { ACTIVE: '启用', DISABLED: '停用' }
+export const USER_STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: '启用' },
+  { value: 'DISABLED', label: '停用' }
+]
 
 export const NOTIFICATION_TYPE_MAP = {
   ASSIGNED: '派单',
@@ -111,5 +167,84 @@ export const NOTIFICATION_TYPE_MAP = {
   COMPLETED: '完工',
   CANCELED: '取消',
   RATED: '评价',
-  RETURNED: '退回'
+  RETURNED: '退回',
+  MAINT_PROGRESS: '维保进度',
+  ANNOUNCEMENT: '公告',
+  FEEDBACK_RESOLVED: '反馈处理',
+  CERT_EXPIRING: '证书到期',
+  ASSIGN_TIMEOUT: '接单超时',
+  PROCESS_TIMEOUT: '处理超时',
+  REVIEW_TIMEOUT: '回访超时'
+}
+
+export const NOTIFICATION_SCOPE_MAP = {
+  ALL: '全部用户',
+  ROLE: '指定角色',
+  BRANCH: '指定小区'
+}
+
+export const NOTIFICATION_SCOPE_OPTIONS = [
+  { value: 'ALL', label: '全部用户' },
+  { value: 'ROLE', label: '指定角色' },
+  { value: 'BRANCH', label: '指定小区' }
+]
+
+// ============ 证书 ============
+export const CERT_TYPE_MAP = {
+  LIFT_CERT: '电梯作业证',
+  ELECTRIC_CERT: '电工作业证',
+  FIRE_CERT: '消防设施操作员',
+  WATER_CERT: '给排水作业证',
+  AIR_CERT: '制冷空调作业证'
+}
+
+// 强制持证的工单类型
+export const CERT_REQUIRED_TYPES = {
+  LIFT: 'LIFT_CERT',
+  ELECTRIC: 'ELECTRIC_CERT',
+  FIRE: 'FIRE_CERT'
+}
+
+export const CERT_STATUS_MAP = {
+  PENDING: '待审核',
+  APPROVED: '已通过',
+  REJECTED: '已驳回',
+  REVOKED: '已撤销',
+  LOCKED: '已锁定'
+}
+
+export const CERT_STATUS_TAG = {
+  PENDING: 'warning',
+  APPROVED: 'success',
+  REJECTED: 'danger',
+  REVOKED: 'info',
+  LOCKED: 'danger'
+}
+
+// ============ 计划任务类型（维保 / 巡检） ============
+export const TASK_TYPE_MAP = {
+  MAINTENANCE: '维保',
+  INSPECTION: '巡检'
+}
+
+// ============ 升级链 ============
+export const ESCALATION_MAP = {
+  0: '正常',
+  1: 'L0 池超时',
+  2: 'L1 督办',
+  3: 'L2 终态'
+}
+
+// 处理超时阈值（小时），与 sys_config 口径一致
+export const PROCESS_TIMEOUT_HOURS = { URGENT: 2, HIGH: 4, MEDIUM: 8, LOW: 24 }
+
+// 预约时间粒度（分钟）
+export const APPOINTMENT_SLOT_MINUTES = 30
+
+export function isArchived(status) {
+  return ARCHIVED_STATUS.includes(status)
+}
+
+export function formatAppointment(value) {
+  return value || '尽快'
 }

@@ -1,5 +1,9 @@
 import request from '@/utils/request'
 
+export function getWorkbenchStats() {
+  return request.get('/stats/workbench')
+}
+
 export function getStatsOverview() {
   return request.get('/stats/overview')
 }

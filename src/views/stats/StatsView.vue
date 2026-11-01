@@ -1,8 +1,8 @@
 <template>
   <div>
-    <el-row :gutter="16">
-      <el-col v-for="card in overviewCards" :key="card.label" :span="4">
-        <el-card class="metric-card" shadow="hover">
+    <el-row :gutter="14">
+      <el-col v-for="card in overviewCards" :key="card.label" :span="3">
+        <el-card class="metric-card" shadow="hover" :class="{ alert: card.alert }">
           <div class="metric-value">{{ card.value }}</div>
           <div class="metric-label">{{ card.label }}</div>
         </el-card>
@@ -37,12 +37,23 @@
       <template #header>
         <div class="card-header">
           <span>维修工绩效</span>
-          <el-button type="primary" size="small" @click="handleExport">导出报表</el-button>
+          <div class="ops">
+            <el-select v-model="exportFormat" size="small" style="width: 110px">
+              <el-option label="Excel" value="EXCEL" />
+              <el-option label="CSV" value="CSV" />
+              <el-option label="PDF" value="PDF" />
+              <el-option label="图表 PNG" value="PNG" />
+            </el-select>
+            <el-button type="primary" size="small" :loading="exporting" @click="handleExport">
+              异步导出
+            </el-button>
+          </div>
         </div>
       </template>
       <el-table :data="performance">
-        <el-table-column prop="engineerName" label="维修工" width="140" />
-        <el-table-column prop="total" label="完工单数" width="120" />
+        <el-table-column prop="engineerName" label="维修工" width="130" />
+        <el-table-column prop="groupName" label="班组" width="110" />
+        <el-table-column prop="total" label="完工单数" width="110" />
         <el-table-column label="平均处理时长（小时）">
           <template #default="{ row }">{{ row.avgHandleHours }}</template>
         </el-table-column>
@@ -52,7 +63,17 @@
             <span v-else>—</span>
           </template>
         </el-table-column>
+        <el-table-column label="超时率" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.overdueRate > 30 ? 'danger' : 'info'" size="small">
+              {{ row.overdueRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
       </el-table>
+      <div class="sub export-tip">
+        导出为异步任务：提交后由后台生成，完成后通过站内通知下发下载链接，链接保留 7 天。
+      </div>
     </el-card>
   </div>
 </template>
@@ -60,7 +81,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
-import { getStatsOverview, getStatsTrend, getTypeDistribution, getEngineerPerformance } from '@/api/stats'
+import { ElMessage } from 'element-plus'
+import {
+  getStatsOverview,
+  getStatsTrend,
+  getTypeDistribution,
+  getEngineerPerformance,
+  exportStats
+} from '@/api/stats'
 import { WORK_ORDER_TYPE_MAP } from '@/utils/dict'
 
 const overview = ref({})
@@ -70,6 +98,8 @@ const performance = ref([])
 const granularity = ref('day')
 const trendRef = ref()
 const typeRef = ref()
+const exportFormat = ref('EXCEL')
+const exporting = ref(false)
 
 let trendChart = null
 let typeChart = null
@@ -77,13 +107,15 @@ let typeChart = null
 const overviewCards = computed(() => [
   { label: '工单总数', value: overview.value.total ?? 0 },
   { label: '待派单', value: overview.value.pending ?? 0 },
-  { label: '已派单', value: overview.value.assigned ?? 0 },
+  { label: '池中待抢', value: overview.value.pool ?? 0 },
   { label: '处理中', value: overview.value.processing ?? 0 },
-  { label: '已完成', value: overview.value.completed ?? 0 },
+  { label: '待回访', value: overview.value.pendingReview ?? 0 },
   { label: '已关闭', value: overview.value.closed ?? 0 },
   { label: '已取消', value: overview.value.canceled ?? 0 },
   { label: '平均时长(h)', value: overview.value.avgHandleHours ?? 0 },
-  { label: '平均满意度', value: overview.value.avgRating ?? 0 }
+  { label: '平均满意度', value: overview.value.avgRating ?? 0 },
+  { label: '处理超时', value: overview.value.overdue ?? 0, alert: true },
+  { label: '已升级', value: overview.value.escalated ?? 0, alert: true }
 ])
 
 function initCharts() {
@@ -148,51 +180,14 @@ async function loadData() {
   await loadTrend()
 }
 
-function handleExport() {
-  const o = overview.value
-  const t = trend.value
-  const sections = []
-
-  const overviewRows = [
-    ['指标', '数值'],
-    ['工单总数', o.total ?? 0],
-    ['待派单', o.pending ?? 0],
-    ['已派单', o.assigned ?? 0],
-    ['处理中', o.processing ?? 0],
-    ['已完成', o.completed ?? 0],
-    ['已关闭', o.closed ?? 0],
-    ['已取消', o.canceled ?? 0],
-    ['平均处理时长(小时)', o.avgHandleHours ?? 0],
-    ['平均满意度', o.avgRating ?? 0]
-  ]
-  sections.push(['【统计总览】', ...overviewRows.map((r) => r.join(','))].join('\n'))
-
-  const trendRows = [
-    ['日期', '新建', '完工'],
-    ...(t.labels || []).map((label, i) => [label, t.created?.[i] ?? 0, t.completed?.[i] ?? 0])
-  ]
-  sections.push(['【工单趋势】', ...trendRows.map((r) => r.join(','))].join('\n'))
-
-  const typeRows = [
-    ['类型', '数量'],
-    ...typeDist.value.map((item) => [WORK_ORDER_TYPE_MAP[item.type] || item.type, item.count])
-  ]
-  sections.push(['【报修类型分布】', ...typeRows.map((r) => r.join(','))].join('\n'))
-
-  const perfRows = [
-    ['维修工', '完工单数', '平均处理时长(小时)', '平均满意度'],
-    ...performance.value.map((p) => [p.engineerName, p.total, p.avgHandleHours, p.avgRating])
-  ]
-  sections.push(['【维修工绩效】', ...perfRows.map((r) => r.join(','))].join('\n'))
-
-  const csv = sections.join('\n\n')
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `统计报表_${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+async function handleExport() {
+  exporting.value = true
+  try {
+    const data = await exportStats({ format: exportFormat.value })
+    ElMessage.success(data.message || '导出任务已提交')
+  } finally {
+    exporting.value = false
+  }
 }
 
 function handleResize() {
@@ -216,17 +211,20 @@ onUnmounted(() => {
 <style scoped>
 .metric-card {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+.metric-card.alert .metric-value {
+  color: var(--el-color-danger);
 }
 .metric-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
   line-height: 1.4;
 }
 .metric-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .charts {
   margin-bottom: 16px;
@@ -238,5 +236,17 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.ops {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.export-tip {
+  margin-top: 10px;
 }
 </style>

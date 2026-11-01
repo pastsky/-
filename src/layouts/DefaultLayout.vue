@@ -1,6 +1,6 @@
 <template>
   <el-container class="layout">
-    <el-aside width="200px" class="aside">
+    <el-aside width="208px" class="aside">
       <div class="logo">物业工单平台</div>
       <el-menu router :default-active="$route.path" class="menu">
         <el-menu-item v-for="item in visibleMenus" :key="item.path" :index="item.path">
@@ -8,9 +8,19 @@
           <span>{{ item.title }}</span>
         </el-menu-item>
       </el-menu>
+      <div class="role-tip">{{ ROLE_MAP[userStore.role] || '' }}</div>
     </el-aside>
     <el-container>
       <el-header class="header">
+        <el-input
+          v-model="searchKeyword"
+          class="search"
+          placeholder="搜索工单号 / 业主姓名 / 电话 / 电梯编号"
+          clearable
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
         <div class="header-right">
           <el-badge :value="unreadCount" :hidden="unreadCount === 0" class="bell">
             <el-icon class="bell-icon" @click="openNotifications"><Bell /></el-icon>
@@ -25,26 +35,33 @@
     </el-container>
   </el-container>
 
-  <el-drawer v-model="notifyVisible" title="站内通知" size="380px">
+  <el-drawer v-model="notifyVisible" title="站内通知" size="420px">
     <div class="notify-toolbar">
+      <el-radio-group v-model="notifyFilter" size="small">
+        <el-radio-button value="all">全部</el-radio-button>
+        <el-radio-button value="unread">未读</el-radio-button>
+      </el-radio-group>
       <el-button v-if="unreadCount" link type="primary" @click="handleReadAll">全部已读</el-button>
     </div>
     <div v-loading="notifyLoading" class="notify-list">
       <div
-        v-for="n in notifications"
+        v-for="n in filteredNotifications"
         :key="n.id"
         class="notify-item"
-        :class="{ unread: !n.isRead }"
+        :class="{ unread: !n.isRead, urgent: isUrgentNotify(n) }"
         @click="handleOpen(n)"
       >
         <div class="notify-title">
           <span v-if="!n.isRead" class="dot"></span>
-          {{ n.title }}
+          <el-tag size="small" :type="isUrgentNotify(n) ? 'danger' : 'info'">
+            {{ NOTIFICATION_TYPE_MAP[n.type] || n.type }}
+          </el-tag>
+          <span>{{ n.title }}</span>
         </div>
         <div class="notify-content">{{ n.content }}</div>
         <div class="notify-time">{{ n.createdAt }}</div>
       </div>
-      <el-empty v-if="!notifications.length" description="暂无通知" />
+      <el-empty v-if="!filteredNotifications.length" description="暂无通知" />
     </div>
   </el-drawer>
 </template>
@@ -52,27 +69,42 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getNotificationList, markNotificationRead, markAllNotificationsRead } from '@/api/notification'
+import { ROLE_MAP, NOTIFICATION_TYPE_MAP } from '@/utils/dict'
 
 const router = useRouter()
 const userStore = useUserStore()
 
+const searchKeyword = ref('')
 const unreadCount = ref(0)
 const notifications = ref([])
 const notifyVisible = ref(false)
 const notifyLoading = ref(false)
+const notifyFilter = ref('all')
 
 const allMenus = [
+  { path: '/dispatch', title: '客服工作台', icon: 'Odometer', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/work-orders', title: '工单管理', icon: 'List', roles: [] },
-  { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN'] },
-  { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
+  { path: '/work-orders/pool', title: '工单池', icon: 'Box', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/calendar', title: '维修日历', icon: 'Calendar', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN', 'BRANCH_ADMIN'] },
+  { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
+  { path: '/broadcast', title: '广播中心', icon: 'Promotion', roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
 ]
 
 const visibleMenus = computed(() =>
   allMenus.filter((m) => m.roles.length === 0 || m.roles.includes(userStore.role))
 )
+
+const filteredNotifications = computed(() =>
+  notifyFilter.value === 'unread' ? notifications.value.filter((n) => !n.isRead) : notifications.value
+)
+
+function isUrgentNotify(n) {
+  return ['ASSIGN_TIMEOUT', 'PROCESS_TIMEOUT', 'RETURNED', 'CERT_EXPIRING'].includes(n.type)
+}
 
 async function loadUnreadCount() {
   const data = await getNotificationList({ page: 1, pageSize: 1, unreadOnly: true })
@@ -83,7 +115,7 @@ async function openNotifications() {
   notifyVisible.value = true
   notifyLoading.value = true
   try {
-    const data = await getNotificationList({ page: 1, pageSize: 20 })
+    const data = await getNotificationList({ page: 1, pageSize: 50 })
     notifications.value = data.list
     unreadCount.value = data.list.filter((n) => !n.isRead).length
   } finally {
@@ -109,6 +141,11 @@ async function handleOpen(n) {
   }
 }
 
+function handleSearch() {
+  const keyword = searchKeyword.value.trim()
+  router.push({ path: '/work-orders', query: keyword ? { keyword } : {} })
+}
+
 async function handleLogout() {
   await userStore.logout()
   router.push('/login')
@@ -132,6 +169,8 @@ onMounted(async () => {
 }
 .aside {
   border-right: 1px solid var(--el-border-color);
+  display: flex;
+  flex-direction: column;
 }
 .logo {
   height: 56px;
@@ -141,12 +180,23 @@ onMounted(async () => {
 }
 .menu {
   border-right: none;
+  flex: 1;
+}
+.role-tip {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 .header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 24px;
   border-bottom: 1px solid var(--el-border-color);
+}
+.search {
+  max-width: 380px;
 }
 .header-right {
   display: flex;
@@ -166,7 +216,8 @@ onMounted(async () => {
 }
 .notify-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 12px;
 }
 .notify-item {
@@ -180,6 +231,9 @@ onMounted(async () => {
 }
 .notify-item.unread {
   background: var(--el-color-primary-light-9);
+}
+.notify-item.urgent .notify-title {
+  color: var(--el-color-danger);
 }
 .notify-title {
   font-weight: 600;

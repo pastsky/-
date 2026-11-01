@@ -5,7 +5,7 @@
         <el-input v-model="query.keyword" placeholder="用户名 / 姓名 / 手机号" clearable style="width: 200px" />
       </el-form-item>
       <el-form-item label="角色">
-        <el-select v-model="query.role" placeholder="全部" clearable style="width: 130px">
+        <el-select v-model="query.role" placeholder="全部" clearable style="width: 140px">
           <el-option v-for="o in ROLE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </el-form-item>
@@ -22,31 +22,46 @@
 
     <div class="toolbar">
       <el-button type="primary" @click="openCreate">新增用户</el-button>
+      <span class="sub">停用为逻辑删除：保留历史工单归属，停用后不可登录、不可被指派</span>
     </div>
 
     <el-table v-loading="loading" :data="list">
-      <el-table-column prop="username" label="用户名" width="130" />
+      <el-table-column prop="username" label="用户名" width="125" />
       <el-table-column prop="realName" label="姓名" width="110" />
-      <el-table-column label="角色" width="100">
+      <el-table-column label="角色" width="120">
         <template #default="{ row }">{{ ROLE_MAP[row.role] }}</template>
       </el-table-column>
-      <el-table-column prop="phone" label="手机号" width="130" />
-      <el-table-column prop="address" label="地址" min-width="140" show-overflow-tooltip>
+      <el-table-column prop="phone" label="手机号" width="125" />
+      <el-table-column label="班组" width="100">
+        <template #default="{ row }">{{ groupName(row.groupId) }}</template>
+      </el-table-column>
+      <el-table-column label="证书" width="150">
+        <template #default="{ row }">
+          <el-tag v-for="c in row.certs || []" :key="c.tagCode" size="small" class="tag">
+            {{ CERT_TYPE_MAP[c.tagCode] || c.tagCode }}
+          </el-tag>
+          <span v-if="!(row.certs || []).length" class="sub">—</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="address" label="地址" min-width="130" show-overflow-tooltip>
         <template #default="{ row }">{{ row.address || '—' }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="90">
+      <el-table-column label="状态" width="86">
         <template #default="{ row }">
           <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
             {{ USER_STATUS_MAP[row.status] }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="createdAt" label="创建时间" width="170" />
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column prop="createdAt" label="创建时间" width="165" />
+      <el-table-column label="操作" width="214" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="warning" @click="openReset(row)">重置密码</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button v-if="row.status === 'ACTIVE'" link type="danger" @click="handleDisable(row)">
+            停用
+          </el-button>
+          <el-button v-else link type="success" @click="handleEnable(row)">恢复</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -62,7 +77,7 @@
       @current-change="loadData"
     />
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="500px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="520px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="登录账号" />
@@ -79,12 +94,25 @@
         <el-form-item label="邮箱">
           <el-input v-model="form.email" />
         </el-form-item>
+        <el-form-item label="小区">
+          <el-select v-model="form.communityId" style="width: 100%">
+            <el-option v-for="c in communities" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="地址">
-          <el-input v-model="form.address" placeholder="楼栋/单元/房间（业主必填）" />
+          <div class="inline">
+            <el-input v-model="form.building" placeholder="楼栋" />
+            <el-input v-model="form.room" placeholder="房号" />
+          </div>
         </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="form.role" style="width: 100%">
             <el-option v-for="o in ROLE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="isRepairerRole" label="班组">
+          <el-select v-model="form.groupId" clearable placeholder="可不入组" style="width: 100%">
+            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -112,15 +140,33 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getUserList, createUser, updateUser, deleteUser, resetPassword } from '@/api/user'
-import { ROLE_MAP, ROLE_OPTIONS, USER_STATUS_MAP, USER_STATUS_OPTIONS } from '@/utils/dict'
+import {
+  getUserList,
+  createUser,
+  updateUser,
+  disableUser,
+  enableUser,
+  resetPassword,
+  getGroups
+} from '@/api/user'
+import { getCommunities } from '@/api/basedata'
+import {
+  ROLE_MAP,
+  ROLE_OPTIONS,
+  USER_STATUS_MAP,
+  USER_STATUS_OPTIONS,
+  CERT_TYPE_MAP,
+  REPAIRER_ROLES
+} from '@/utils/dict'
 
 const loading = ref(false)
 const submitting = ref(false)
 const list = ref([])
 const total = ref(0)
+const groups = ref([])
+const communities = ref([])
 const query = reactive({ page: 1, pageSize: 20, keyword: '', role: '', status: '' })
 
 const dialogVisible = ref(false)
@@ -136,16 +182,27 @@ const form = reactive({
   realName: '',
   phone: '',
   email: '',
-  address: '',
+  building: '',
+  room: '',
+  communityId: 1,
   role: '',
+  groupId: null,
   status: 'ACTIVE'
 })
+
+const isRepairerRole = computed(() => REPAIRER_ROLES.includes(form.role))
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
   realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+}
+
+const groupList = groups
+
+function groupName(id) {
+  return groups.value.find((g) => g.id === id)?.name || '—'
 }
 
 function buildParams() {
@@ -183,14 +240,19 @@ function handleReset() {
 }
 
 function resetForm() {
-  form.username = ''
-  form.password = ''
-  form.realName = ''
-  form.phone = ''
-  form.email = ''
-  form.address = ''
-  form.role = ''
-  form.status = 'ACTIVE'
+  Object.assign(form, {
+    username: '',
+    password: '',
+    realName: '',
+    phone: '',
+    email: '',
+    building: '',
+    room: '',
+    communityId: 1,
+    role: '',
+    groupId: null,
+    status: 'ACTIVE'
+  })
 }
 
 function openCreate() {
@@ -203,14 +265,19 @@ function openCreate() {
 function openEdit(row) {
   isEdit.value = true
   editId.value = row.id
-  form.username = row.username
-  form.password = ''
-  form.realName = row.realName
-  form.phone = row.phone || ''
-  form.email = row.email || ''
-  form.address = row.address || ''
-  form.role = row.role
-  form.status = row.status
+  Object.assign(form, {
+    username: row.username,
+    password: '',
+    realName: row.realName,
+    phone: row.phone || '',
+    email: row.email || '',
+    building: row.building || '',
+    room: row.room || '',
+    communityId: row.communityId || 1,
+    role: row.role,
+    groupId: row.groupId || null,
+    status: row.status
+  })
   dialogVisible.value = true
 }
 
@@ -221,8 +288,12 @@ async function handleSubmit() {
     realName: form.realName,
     phone: form.phone,
     email: form.email,
-    address: form.address,
+    address: `${form.building || ''}${form.room || ''}`,
+    building: form.building,
+    room: form.room,
+    communityId: form.communityId,
     role: form.role,
+    groupId: isRepairerRole.value ? form.groupId : null,
     status: form.status
   }
   submitting.value = true
@@ -257,14 +328,29 @@ async function submitReset() {
   resetVisible.value = false
 }
 
-async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除用户「${row.realName}」？删除后将置为禁用状态。`, '删除确认', { type: 'warning' })
-  await deleteUser(row.id)
-  ElMessage.success('已删除')
+async function handleDisable(row) {
+  await ElMessageBox.confirm(
+    `确认停用「${row.realName}」？停用后不可登录、不可被指派，历史工单保留。`,
+    '停用确认',
+    { type: 'warning' }
+  )
+  await disableUser(row.id)
+  ElMessage.success('已停用')
   loadData()
 }
 
-onMounted(loadData)
+async function handleEnable(row) {
+  await enableUser(row.id)
+  ElMessage.success('已恢复')
+  loadData()
+}
+
+onMounted(async () => {
+  const [gs, cs] = await Promise.all([getGroups(), getCommunities()])
+  groups.value = gs
+  communities.value = cs
+  loadData()
+})
 </script>
 
 <style scoped>
@@ -273,6 +359,21 @@ onMounted(loadData)
 }
 .toolbar {
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.tag {
+  margin-right: 4px;
+}
+.inline {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 .pagination {
   margin-top: 16px;

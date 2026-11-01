@@ -3,49 +3,121 @@
     <el-page-header class="page-header" content="工单详情" @back="$router.back()" />
 
     <el-card v-loading="loading">
-      <el-descriptions :column="2" border>
+      <div class="title-row">
+        <span class="title">{{ detail.title }}</span>
+        <el-tag v-if="detail.poolFlag === 1" type="warning" size="small">待抢单</el-tag>
+        <el-tag v-if="detail.overdue" type="danger" size="small">处理超时</el-tag>
+        <el-tag v-if="detail.escalationCount > 0" type="danger" size="small">
+          {{ ESCALATION_MAP[detail.escalationCount] || '已升级' }}
+        </el-tag>
+      </div>
+      <el-descriptions :column="3" border class="desc">
         <el-descriptions-item label="工单号">{{ detail.orderNo }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="WORK_ORDER_STATUS_TAG[detail.status]" size="small">
             {{ WORK_ORDER_STATUS_MAP[detail.status] }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="标题" :span="2">{{ detail.title }}</el-descriptions-item>
-        <el-descriptions-item label="位置">{{ detail.location || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="优先级">
-          {{ WORK_ORDER_PRIORITY_MAP[detail.priority] }}
+        <el-descriptions-item label="来源">
+          {{ WORK_ORDER_SOURCE_MAP[detail.source] || '—' }}
         </el-descriptions-item>
         <el-descriptions-item label="类型">{{ WORK_ORDER_TYPE_MAP[detail.type] }}</el-descriptions-item>
-        <el-descriptions-item label="报修人">{{ detail.reporter?.realName || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="问题描述" :span="2">{{ detail.description || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="处理人">{{ detail.assignee?.realName || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="优先级">
+          <el-tag :type="WORK_ORDER_PRIORITY_TAG[detail.priority]" size="small">
+            {{ WORK_ORDER_PRIORITY_MAP[detail.priority] }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="预约时间">
+          {{ formatAppointment(detail.appointmentTime) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="位置">
+          {{ detail.location || [detail.building, detail.room].filter(Boolean).join('') || '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="电梯">
+          {{ detail.elevator ? detail.elevator.elevatorNo : '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="报修人">
+          {{ detail.reporter?.realName || '—' }}
+          <span v-if="detail.reporter?.phone" class="sub">（{{ detail.reporter.phone }}）</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="处理人">
+          {{ detail.assignee?.realName || '—' }}
+          <span v-if="detail.assignee?.phone" class="sub">（{{ detail.assignee.phone }}）</span>
+        </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ detail.createdAt }}</el-descriptions-item>
         <el-descriptions-item label="完工时间">{{ detail.finishTime || '—' }}</el-descriptions-item>
         <el-descriptions-item label="关闭时间">{{ detail.closeTime || '—' }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.cancelTime" label="取消时间">{{ detail.cancelTime }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.rating" label="评价" :span="2">
+        <el-descriptions-item v-if="detail.cancelTime" label="取消时间">
+          {{ detail.cancelTime }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detail.rejectCount" label="完工驳回次数">
+          {{ detail.rejectCount }} / 3
+        </el-descriptions-item>
+        <el-descriptions-item label="问题描述" :span="3">
+          {{ detail.description || '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detail.rating" label="评价" :span="3">
           <el-rate :model-value="detail.rating" disabled />
-          <span class="rate-text">{{ detail.ratingComment || '' }}</span>
-          <span v-if="detail.ratedAt" class="rate-time">{{ detail.ratedAt }}</span>
+          <span class="sub">{{ detail.ratingComment || '' }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detail.reviewResult" label="回访结果" :span="3">
+          {{ REVIEW_RESULT_MAP[detail.reviewResult] }}
+          <span class="sub">{{ detail.reviewRemark || '' }}</span>
         </el-descriptions-item>
       </el-descriptions>
+
+      <div v-if="detail.images && detail.images.length" class="images">
+        <div class="images-label">故障照片</div>
+        <el-image
+          v-for="(img, i) in detail.images"
+          :key="i"
+          :src="img"
+          :preview-src-list="detail.images"
+          :initial-index="i"
+          fit="cover"
+          class="thumb"
+        />
+      </div>
+      <div v-if="detail.finishImages && detail.finishImages.length" class="images">
+        <div class="images-label">完工照片</div>
+        <el-image
+          v-for="(img, i) in detail.finishImages"
+          :key="i"
+          :src="img"
+          :preview-src-list="detail.finishImages"
+          :initial-index="i"
+          fit="cover"
+          class="thumb"
+        />
+        <span class="sub">{{ detail.finishRemark }}</span>
+      </div>
     </el-card>
 
     <el-card class="section">
       <div class="action-bar">
         <el-button v-if="canEdit" @click="goEdit">编辑</el-button>
         <el-button v-if="canAssign" type="primary" @click="openAssign">派单</el-button>
-        <el-button v-if="canReturn" @click="handleReturn">退回</el-button>
+        <el-button v-if="canPushPool" @click="handlePushPool">推送入池</el-button>
+        <el-button v-if="canAuditAppointment" @click="openAudit">审核预约</el-button>
+        <el-button v-if="canReturn" @click="openReturn">退回</el-button>
+        <el-button v-if="canTransfer" @click="openTransfer">转交</el-button>
         <el-button v-if="canAccept" type="primary" @click="handleAccept">接单</el-button>
-        <el-button v-if="canComplete" type="primary" @click="handleComplete">完工</el-button>
+        <el-button v-if="canComplete" type="primary" @click="openComplete">完工</el-button>
+        <el-button v-if="canReject" type="warning" @click="openReject">完工驳回</el-button>
+        <el-button v-if="canReview" type="success" @click="openReview">回访</el-button>
         <el-button v-if="canClose" @click="handleClose">关闭</el-button>
         <el-button v-if="canRate" type="warning" @click="openRate">评价</el-button>
+        <el-button v-if="canRemark" @click="openRemark">内部备注</el-button>
         <el-button v-if="canCancel" type="danger" @click="handleCancel">取消工单</el-button>
+        <span v-if="!hasAction" class="sub">当前状态/角色无可执行操作</span>
       </div>
     </el-card>
 
     <el-card class="section">
-      <template #header>流转记录</template>
+      <template #header>
+        流转记录
+        <span class="sub">（含原因与操作角色，按时间正序）</span>
+      </template>
       <el-timeline v-if="logList.length">
         <el-timeline-item
           v-for="(log, i) in logList"
@@ -53,27 +125,90 @@
           :timestamp="log.createdAt"
           placement="top"
         >
-          {{ log.operatorName }} · {{ WORK_ORDER_ACTION_MAP[log.action] }}
-          <span v-if="log.remark" class="log-remark">（{{ log.remark }}）</span>
+          <span class="log-op">{{ log.operatorName }}</span>
+          · {{ WORK_ORDER_ACTION_MAP[log.action] || log.action }}
+          <el-tag v-if="log.reason" size="small" type="info" class="log-reason">原因：{{ log.reason }}</el-tag>
+          <span v-if="log.remark" class="sub">（{{ log.remark }}）</span>
         </el-timeline-item>
       </el-timeline>
       <el-empty v-else description="暂无记录" />
     </el-card>
 
-    <el-dialog v-model="assignVisible" title="派单" width="440px">
-      <el-form label-width="80px">
-        <el-form-item label="维修工">
-          <el-select v-model="assignForm.assigneeId" placeholder="请选择维修工" style="width: 100%">
-            <el-option
-              v-for="e in engineers"
-              :key="e.id"
-              :label="`${e.realName}（${e.phone || '—'}）`"
-              :value="e.id"
+    <el-card v-if="canRemark" class="section">
+      <template #header>
+        内部备注
+        <span class="sub">（客服与维修工互见，业主不可见）</span>
+      </template>
+      <div v-if="detail.remarks && detail.remarks.length" class="remark-list">
+        <div v-for="r in detail.remarks" :key="r.id" class="remark-item">
+          <div class="remark-head">
+            <b>{{ r.operatorName }}</b>
+            <span class="sub">{{ r.createdAt }}</span>
+          </div>
+          <div>{{ r.content }}</div>
+          <div v-if="r.images && r.images.length" class="images">
+            <el-image
+              v-for="(img, i) in r.images"
+              :key="i"
+              :src="img"
+              :preview-src-list="r.images"
+              :initial-index="i"
+              fit="cover"
+              class="thumb small"
             />
+          </div>
+        </div>
+      </div>
+      <el-empty v-else description="暂无内部备注" :image-size="60" />
+    </el-card>
+
+    <!-- 派单 -->
+    <el-dialog v-model="assignVisible" title="派单" width="760px">
+      <el-form label-width="88px">
+        <el-form-item label="班组">
+          <el-select v-model="assignForm.groupId" clearable placeholder="全部班组" style="width: 220px" @change="loadEngineers">
+            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
+          <span class="sub">不选班组则全局选人</span>
+        </el-form-item>
+        <el-form-item label="维修工">
+          <el-table :data="engineers" height="240" highlight-current-row @current-change="onEngineerChange">
+            <el-table-column prop="realName" label="姓名" width="90" />
+            <el-table-column prop="groupName" label="班组" width="90" />
+            <el-table-column label="持证" min-width="140">
+              <template #default="{ row }">
+                <el-tag
+                  v-for="c in row.validCerts"
+                  :key="c"
+                  size="small"
+                  :type="isCertSufficient(row) ? 'success' : 'info'"
+                  class="tag"
+                >
+                  {{ CERT_TYPE_MAP[c] || c }}
+                </el-tag>
+                <span v-if="!row.validCerts.length" class="sub">无证</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="值班" width="66">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.onDuty ? 'success' : 'info'">
+                  {{ row.onDuty ? '在值' : '收工' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="在途" width="60">
+              <template #default="{ row }">{{ row.unfinishedCount }}</template>
+            </el-table-column>
+            <el-table-column label="今日" width="60">
+              <template #default="{ row }">{{ row.todayCount }}</template>
+            </el-table-column>
+            <el-table-column label="超时率" width="76">
+              <template #default="{ row }">{{ row.overdueRate }}%</template>
+            </el-table-column>
+          </el-table>
         </el-form-item>
         <el-form-item label="优先级">
-          <el-select v-model="assignForm.priority" clearable placeholder="不变更" style="width: 100%">
+          <el-select v-model="assignForm.priority" clearable placeholder="不变更" style="width: 220px">
             <el-option
               v-for="o in WORK_ORDER_PRIORITY_OPTIONS"
               :key="o.value"
@@ -85,13 +220,153 @@
         <el-form-item label="备注">
           <el-input v-model="assignForm.remark" type="textarea" placeholder="派单说明" />
         </el-form-item>
+        <el-form-item label="去向">
+          <el-checkbox v-model="assignForm.toPool">不指派个人，直接推入待抢单池</el-checkbox>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="assignVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitAssign">确定派单</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitAssign">确定</el-button>
       </template>
     </el-dialog>
 
+    <!-- 退回 -->
+    <el-dialog v-model="returnVisible" title="退回工单" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="去向">
+          <el-radio-group v-model="returnForm.target">
+            <el-radio value="REASSIGN">重新指派</el-radio>
+            <el-radio value="POOL">推入待抢单池</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="退回原因" required>
+          <el-input v-model="returnForm.reason" type="textarea" placeholder="如：无电梯作业证 / 现场无法进入" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="returnVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitReturn">确定退回</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 转交 -->
+    <el-dialog v-model="transferVisible" title="转交工单" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="目标维修工">
+          <el-select v-model="transferForm.assigneeId" placeholder="请选择" style="width: 100%">
+            <el-option
+              v-for="e in engineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName}，在途 ${e.unfinishedCount}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="转交原因" required>
+          <el-input v-model="transferForm.reason" type="textarea" placeholder="如：原维修工超时未处理" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitTransfer">确定转交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 完工 -->
+    <el-dialog v-model="completeVisible" title="完工提交" width="560px">
+      <el-form label-width="80px">
+        <el-form-item label="完工说明">
+          <el-input v-model="completeForm.remark" type="textarea" placeholder="说明处理结果" />
+        </el-form-item>
+        <el-form-item label="现场照片" required>
+          <el-upload
+            v-model:file-list="completeFiles"
+            list-type="picture-card"
+            :http-request="handleUpload"
+            :limit="6"
+            multiple
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+          <div class="sub">完工必须上传至少 1 张现场照片（1~6 张），后端缺失时同样返回 1000</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="completeVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitComplete">提交完工</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 完工驳回 -->
+    <el-dialog v-model="rejectVisible" title="完工驳回" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="驳回原因" required>
+          <el-input v-model="rejectForm.reason" type="textarea" placeholder="如：现场照片不清晰 / 问题未解决" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="rejectForm.remark" type="textarea" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">驳回后回到「处理中」返工，最多 3 次，超限需走升级督办</div>
+      <template #footer>
+        <el-button @click="rejectVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitReject">确定驳回</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 回访 -->
+    <el-dialog v-model="reviewVisible" title="回访结果" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="结果">
+          <el-radio-group v-model="reviewForm.result">
+            <el-radio value="SATISFIED">满意，归档</el-radio>
+            <el-radio value="UNSATISFIED">不满意，返工</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="reviewForm.remark" type="textarea" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">待回访超 24 小时将自动默认好评归档</div>
+      <template #footer>
+        <el-button @click="reviewVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitReview">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 审核预约 -->
+    <el-dialog v-model="auditVisible" title="审核预约时间" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="业主预约">
+          {{ formatAppointment(detail.appointmentTime) }}
+        </el-form-item>
+        <el-form-item label="审核结果">
+          <el-radio-group v-model="auditForm.approved">
+            <el-radio :value="1">按预约时间上门</el-radio>
+            <el-radio :value="0">改约</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="!auditForm.approved" label="新时间" required>
+          <el-date-picker
+            v-model="auditForm.newTime"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            format="YYYY-MM-DD HH:mm"
+            :step="30"
+            placeholder="选择新时间（30 分钟粒度）"
+          />
+        </el-form-item>
+        <el-form-item v-if="!auditForm.approved" label="改约原因" required>
+          <el-input v-model="auditForm.reason" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="auditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitAudit">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 评价 -->
     <el-dialog v-model="rateVisible" title="评价工单" width="440px">
       <el-form label-width="60px">
         <el-form-item label="评分">
@@ -106,6 +381,31 @@
         <el-button type="primary" :loading="submitting" @click="submitRate">提交评价</el-button>
       </template>
     </el-dialog>
+
+    <!-- 内部备注 -->
+    <el-dialog v-model="remarkVisible" title="内部备注" width="560px">
+      <el-form label-width="70px">
+        <el-form-item label="内容">
+          <el-input v-model="remarkForm.content" type="textarea" :rows="3" placeholder="仅客服与维修工可见" />
+        </el-form-item>
+        <el-form-item label="图片">
+          <el-upload
+            v-model:file-list="remarkFiles"
+            list-type="picture-card"
+            :http-request="handleUpload"
+            :limit="3"
+            multiple
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+          <div class="sub">每条备注最多 3 张</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="remarkVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitRemark">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -113,26 +413,42 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import {
   getWorkOrderDetail,
   getWorkOrderLogs,
   assignWorkOrder,
+  pushToPool,
   returnWorkOrder,
+  transferWorkOrder,
   acceptWorkOrder,
   completeWorkOrder,
+  rejectWorkOrder,
+  reviewWorkOrder,
   closeWorkOrder,
   cancelWorkOrder,
-  rateWorkOrder
+  rateWorkOrder,
+  auditAppointment,
+  addWorkOrderRemark
 } from '@/api/workOrder'
-import { getEngineers } from '@/api/user'
+import { getEngineers, getGroups } from '@/api/user'
+import { uploadImage, compressImage } from '@/api/file'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_STATUS_MAP,
   WORK_ORDER_STATUS_TAG,
   WORK_ORDER_TYPE_MAP,
   WORK_ORDER_PRIORITY_MAP,
+  WORK_ORDER_PRIORITY_TAG,
   WORK_ORDER_PRIORITY_OPTIONS,
-  WORK_ORDER_ACTION_MAP
+  WORK_ORDER_ACTION_MAP,
+  WORK_ORDER_SOURCE_MAP,
+  REVIEW_RESULT_MAP,
+  ESCALATION_MAP,
+  CERT_TYPE_MAP,
+  CERT_REQUIRED_TYPES,
+  REPAIRER_ROLES,
+  formatAppointment
 } from '@/utils/dict'
 
 const route = useRoute()
@@ -145,46 +461,98 @@ const submitting = ref(false)
 const detail = ref({})
 const logList = ref([])
 const engineers = ref([])
+const groupList = ref([])
+
 const assignVisible = ref(false)
+const returnVisible = ref(false)
+const transferVisible = ref(false)
+const completeVisible = ref(false)
+const rejectVisible = ref(false)
+const reviewVisible = ref(false)
+const auditVisible = ref(false)
 const rateVisible = ref(false)
-const assignForm = reactive({ assigneeId: null, remark: '', priority: '' })
+const remarkVisible = ref(false)
+
+const assignForm = reactive({ assigneeId: null, groupId: null, priority: '', remark: '', toPool: false })
+const returnForm = reactive({ target: 'REASSIGN', reason: '' })
+const transferForm = reactive({ assigneeId: null, reason: '' })
+const completeForm = reactive({ remark: '' })
+const rejectForm = reactive({ reason: '', remark: '' })
+const reviewForm = reactive({ result: 'SATISFIED', remark: '' })
+const auditForm = reactive({ approved: 1, newTime: '', reason: '' })
 const rateForm = reactive({ rating: 0, comment: '' })
+const remarkForm = reactive({ content: '' })
+
+const completeFiles = ref([])
+const remarkFiles = ref([])
 
 const role = computed(() => userStore.role)
 const status = computed(() => detail.value.status)
+const isStaff = computed(() =>
+  ['CUSTOMER_SERVICE', 'ADMIN', 'BRANCH_ADMIN'].includes(role.value)
+)
+const isRepairer = computed(() => REPAIRER_ROLES.includes(role.value))
 const isAssignee = computed(() => detail.value.assignee?.id === userStore.currentUser?.id)
 const isReporter = computed(() => detail.value.reporter?.id === userStore.currentUser?.id)
+const archived = computed(() => ['CLOSED', 'CANCELED', 'ESCALATED_FINAL'].includes(status.value))
 
 const canEdit = computed(
-  () => ['RESIDENT', 'ADMIN'].includes(role.value) && status.value === 'PENDING'
+  () => ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'].includes(role.value) && status.value === 'PENDING'
 )
-const canAssign = computed(
-  () => ['CUSTOMER_SERVICE', 'ADMIN'].includes(role.value) && status.value === 'PENDING'
+const canAssign = computed(() => isStaff.value && status.value === 'PENDING')
+const canPushPool = computed(() => isStaff.value && ['PENDING', 'ASSIGNED'].includes(status.value))
+const canAuditAppointment = computed(
+  () => isRepairer.value && isAssignee.value && !!detail.value.appointmentTime && !archived.value
 )
-const canReturn = computed(
-  () => role.value === 'ENGINEER' && status.value === 'ASSIGNED' && isAssignee.value
+const canReturn = computed(() => isRepairer.value && status.value === 'ASSIGNED' && isAssignee.value)
+const canTransfer = computed(() => isStaff.value && status.value === 'PROCESSING')
+const canAccept = computed(() => isRepairer.value && status.value === 'ASSIGNED' && isAssignee.value)
+const canComplete = computed(() => isRepairer.value && status.value === 'PROCESSING' && isAssignee.value)
+const canReject = computed(
+  () => isStaff.value && ['COMPLETED', 'PENDING_REVIEW'].includes(status.value)
 )
-const canAccept = computed(
-  () => role.value === 'ENGINEER' && status.value === 'ASSIGNED' && isAssignee.value
-)
-const canComplete = computed(
-  () => role.value === 'ENGINEER' && status.value === 'PROCESSING' && isAssignee.value
-)
+const canReview = computed(() => isStaff.value && status.value === 'PENDING_REVIEW')
 const canClose = computed(
-  () => ['CUSTOMER_SERVICE', 'ADMIN'].includes(role.value) && status.value === 'COMPLETED'
+  () => isStaff.value && ['COMPLETED', 'PENDING_REVIEW'].includes(status.value)
 )
 const canRate = computed(
   () =>
     role.value === 'RESIDENT' &&
-    status.value === 'COMPLETED' &&
-    detail.value.rating === 0 &&
+    ['COMPLETED', 'PENDING_REVIEW'].includes(status.value) &&
+    !detail.value.rating &&
     isReporter.value
 )
-const canCancel = computed(
+const canRemark = computed(() => isStaff.value || isRepairer.value)
+const canCancel = computed(() => {
+  if (['PENDING', 'ASSIGNED'].includes(status.value)) {
+    return isStaff.value || (role.value === 'RESIDENT' && isReporter.value)
+  }
+  if (status.value === 'PROCESSING') return isStaff.value
+  return false
+})
+
+const hasAction = computed(
   () =>
-    ['RESIDENT', 'CUSTOMER_SERVICE', 'ADMIN'].includes(role.value) &&
-    ['PENDING', 'ASSIGNED'].includes(status.value)
+    canEdit.value ||
+    canAssign.value ||
+    canPushPool.value ||
+    canAuditAppointment.value ||
+    canReturn.value ||
+    canTransfer.value ||
+    canAccept.value ||
+    canComplete.value ||
+    canReject.value ||
+    canReview.value ||
+    canClose.value ||
+    canRate.value ||
+    canRemark.value ||
+    canCancel.value
 )
+
+function isCertSufficient(row) {
+  const required = CERT_REQUIRED_TYPES[detail.value.type]
+  return !required || row.validCerts.includes(required)
+}
 
 async function loadDetail() {
   loading.value = true
@@ -196,21 +564,50 @@ async function loadDetail() {
   }
 }
 
+async function loadEngineers() {
+  engineers.value = await getEngineers(assignForm.groupId ? { groupId: assignForm.groupId } : {})
+}
+
+async function loadGroups() {
+  groupList.value = await getGroups()
+}
+
 function goEdit() {
   router.push(`/work-orders/${id}/edit`)
 }
 
 async function openAssign() {
-  if (!engineers.value.length) {
-    engineers.value = await getEngineers()
-  }
   assignForm.assigneeId = null
-  assignForm.remark = ''
+  assignForm.groupId = null
   assignForm.priority = ''
+  assignForm.remark = ''
+  assignForm.toPool = false
+  if (!groupList.value.length) await loadGroups()
+  await loadEngineers()
   assignVisible.value = true
 }
 
+function onEngineerChange(row) {
+  assignForm.assigneeId = row ? row.id : null
+}
+
 async function submitAssign() {
+  if (assignForm.toPool) {
+    if (!assignForm.remark) {
+      ElMessage.warning('入池需填写说明')
+      return
+    }
+    submitting.value = true
+    try {
+      await pushToPool(id, { reason: assignForm.remark, remark: assignForm.remark })
+      assignVisible.value = false
+      ElMessage.success('已推入待抢单池')
+      loadDetail()
+    } finally {
+      submitting.value = false
+    }
+    return
+  }
   if (!assignForm.assigneeId) {
     ElMessage.warning('请选择维修工')
     return
@@ -230,14 +627,64 @@ async function submitAssign() {
   }
 }
 
-async function handleReturn() {
-  const { value } = await ElMessageBox.prompt('请输入退回原因', '退回工单', {
+async function handlePushPool() {
+  const { value } = await ElMessageBox.prompt('请输入推送入池原因', '推送入池', {
     confirmButtonText: '确定',
-    cancelButtonText: '取消'
+    cancelButtonText: '取消',
+    inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
-  await returnWorkOrder(id, { remark: value || '' })
-  ElMessage.success('已退回')
+  await pushToPool(id, { reason: value, remark: value })
+  ElMessage.success('已推入待抢单池')
   loadDetail()
+}
+
+function openReturn() {
+  returnForm.target = 'REASSIGN'
+  returnForm.reason = ''
+  returnVisible.value = true
+}
+
+async function submitReturn() {
+  if (!returnForm.reason) {
+    ElMessage.warning('请填写退回原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await returnWorkOrder(id, { reason: returnForm.reason, target: returnForm.target })
+    returnVisible.value = false
+    ElMessage.success(returnForm.target === 'POOL' ? '已退回并入池' : '已退回待重派')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openTransfer() {
+  await loadEngineers()
+  transferForm.assigneeId = null
+  transferForm.reason = ''
+  transferVisible.value = true
+}
+
+async function submitTransfer() {
+  if (!transferForm.assigneeId) {
+    ElMessage.warning('请选择目标维修工')
+    return
+  }
+  if (!transferForm.reason) {
+    ElMessage.warning('请填写转交原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await transferWorkOrder(id, transferForm)
+    transferVisible.value = false
+    ElMessage.success('已转交')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function handleAccept() {
@@ -247,14 +694,100 @@ async function handleAccept() {
   loadDetail()
 }
 
-async function handleComplete() {
-  const { value } = await ElMessageBox.prompt('请输入完工说明', '完工', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消'
-  })
-  await completeWorkOrder(id, { remark: value || '' })
-  ElMessage.success('已完工')
-  loadDetail()
+function openComplete() {
+  completeForm.remark = ''
+  completeFiles.value = []
+  completeVisible.value = true
+}
+
+async function handleUpload(options) {
+  try {
+    const compressed = await compressImage(options.file)
+    const url = await uploadImage(compressed)
+    options.onSuccess(url)
+  } catch (e) {
+    options.onError(e)
+  }
+}
+
+async function submitComplete() {
+  const images = completeFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (!images.length) {
+    ElMessage.warning('完工需至少上传 1 张现场照片')
+    return
+  }
+  submitting.value = true
+  try {
+    await completeWorkOrder(id, { remark: completeForm.remark, images })
+    completeVisible.value = false
+    ElMessage.success('已完工，待回访')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openReject() {
+  rejectForm.reason = ''
+  rejectForm.remark = ''
+  rejectVisible.value = true
+}
+
+async function submitReject() {
+  if (!rejectForm.reason) {
+    ElMessage.warning('请填写驳回原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await rejectWorkOrder(id, rejectForm)
+    rejectVisible.value = false
+    ElMessage.success('已驳回，返回处理中')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openReview() {
+  reviewForm.result = 'SATISFIED'
+  reviewForm.remark = ''
+  reviewVisible.value = true
+}
+
+async function submitReview() {
+  submitting.value = true
+  try {
+    await reviewWorkOrder(id, reviewForm)
+    reviewVisible.value = false
+    ElMessage.success(reviewForm.result === 'SATISFIED' ? '回访完成，已归档' : '已退回返工')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openAudit() {
+  auditForm.approved = 1
+  auditForm.newTime = ''
+  auditForm.reason = ''
+  auditVisible.value = true
+}
+
+async function submitAudit() {
+  if (!auditForm.approved && (!auditForm.newTime || !auditForm.reason)) {
+    ElMessage.warning('改约需填写新时间与原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await auditAppointment(id, auditForm)
+    auditVisible.value = false
+    ElMessage.success('预约处理已提交')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function handleClose() {
@@ -267,9 +800,10 @@ async function handleClose() {
 async function handleCancel() {
   const { value } = await ElMessageBox.prompt('请输入取消原因', '取消工单', {
     confirmButtonText: '确定',
-    cancelButtonText: '取消'
+    cancelButtonText: '取消',
+    inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
-  await cancelWorkOrder(id, { remark: value || '' })
+  await cancelWorkOrder(id, { reason: value, remark: value })
   ElMessage.success('已取消')
   loadDetail()
 }
@@ -296,12 +830,48 @@ async function submitRate() {
   }
 }
 
+function openRemark() {
+  remarkForm.content = ''
+  remarkFiles.value = []
+  remarkVisible.value = true
+}
+
+async function submitRemark() {
+  if (!remarkForm.content) {
+    ElMessage.warning('请输入备注内容')
+    return
+  }
+  const images = remarkFiles.value.filter((f) => f.url).map((f) => f.url)
+  submitting.value = true
+  try {
+    await addWorkOrderRemark(id, { content: remarkForm.content, images })
+    remarkVisible.value = false
+    ElMessage.success('备注已保存')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
 onMounted(loadDetail)
 </script>
 
 <style scoped>
 .page-header {
   margin-bottom: 16px;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.desc {
+  margin-bottom: 8px;
 }
 .section {
   margin-top: 16px;
@@ -310,17 +880,55 @@ onMounted(loadDetail)
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
-.rate-text {
-  margin-left: 12px;
-  color: var(--el-text-color-secondary);
-}
-.rate-time {
-  margin-left: 8px;
+.sub {
+  margin-left: 6px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
-.log-remark {
+.images {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.images-label {
+  font-size: 13px;
   color: var(--el-text-color-secondary);
+}
+.thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+}
+.thumb.small {
+  width: 56px;
+  height: 56px;
+}
+.tag {
+  margin-right: 4px;
+}
+.log-op {
+  font-weight: 600;
+}
+.log-reason {
+  margin-left: 6px;
+}
+.remark-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.remark-item {
+  border-left: 3px solid var(--el-color-primary-light-5);
+  padding-left: 10px;
+}
+.remark-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 4px;
 }
 </style>

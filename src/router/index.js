@@ -60,6 +60,24 @@ const routes = [
         meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'ENGINEER', 'VENDOR_ENGINEER'] }
       },
       {
+        path: 'maintenance',
+        name: 'MaintenanceList',
+        component: () => import('@/views/maintenance/MaintenanceList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
+        path: 'inspection',
+        name: 'InspectionList',
+        component: () => import('@/views/inspection/InspectionList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
+        path: 'certificates',
+        name: 'CertificateList',
+        component: () => import('@/views/certificate/CertificateList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
         path: 'teams',
         name: 'TeamList',
         component: () => import('@/views/team/TeamList.vue'),

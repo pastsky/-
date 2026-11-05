@@ -361,3 +361,93 @@ export const FORCE_STATUS_MATRIX = {
   PENDING: ['CANCELED']
 }
 
+// ============ 证书审核流（PR-017） ============
+export const CERT_REVIEW_ACTION_MAP = {
+  SUBMIT: '提交',
+  RE_SUBMIT: '重新提交',
+  APPROVE: '通过',
+  REJECT: '驳回',
+  REVOKE: '撤销',
+  UNLOCK: '解锁'
+}
+
+// ============ 电梯类型 ============
+export const ELEVATOR_TYPE_MAP = {
+  PASSENGER: '客梯',
+  FREIGHT: '货梯',
+  MEDICAL: '医用梯',
+  ESCALATOR: '扶梯'
+}
+
+export const ELEVATOR_TYPE_OPTIONS = Object.keys(ELEVATOR_TYPE_MAP).map((value) => ({
+  value,
+  label: ELEVATOR_TYPE_MAP[value]
+}))
+
+// ============ 巡检（PR-018） ============
+export const INSPECTION_STATUS_MAP = {
+  PENDING: '待执行',
+  ASSIGNED: '待接单',
+  PROCESSING: '执行中',
+  COMPLETED: '已完成',
+  REJECTED: '已驳回',
+  MISSED: '漏巡'
+}
+
+export const INSPECTION_STATUS_TAG = {
+  PENDING: 'warning',
+  ASSIGNED: 'primary',
+  PROCESSING: 'primary',
+  COMPLETED: 'success',
+  REJECTED: 'danger',
+  MISSED: 'danger'
+}
+
+export const POINT_RESULT_MAP = {
+  NORMAL: '正常',
+  ABNORMAL: '异常'
+}
+
+export const SEVERITY_MAP = {
+  LOW: '低',
+  MEDIUM: '中',
+  HIGH: '高',
+  URGENT: '紧急'
+}
+
+export const SEVERITY_TAG = {
+  LOW: 'info',
+  MEDIUM: 'primary',
+  HIGH: 'warning',
+  URGENT: 'danger'
+}
+
+// ============ 维保任务（PR-008） ============
+export const MAINT_STATUS_MAP = {
+  PENDING: '待分配',
+  ASSIGNED: '待接单',
+  PROCESSING: '处理中',
+  COMPLETED: '已完工',
+  CONFIRMED: '已确认',
+  CANCELED: '已取消'
+}
+
+export const MAINT_STATUS_TAG = {
+  PENDING: 'warning',
+  ASSIGNED: 'primary',
+  PROCESSING: 'primary',
+  COMPLETED: 'success',
+  CONFIRMED: 'success',
+  CANCELED: 'info'
+}
+
+export const CYCLE_TYPE_OPTIONS = [
+  { value: 'MONTHLY', label: '每月' },
+  { value: 'QUARTERLY', label: '每季度' },
+  { value: 'SEMIANNUAL', label: '每半年' },
+  { value: 'YEARLY', label: '每年' }
+]
+
+export const CYCLE_TYPE_MAP = CYCLE_TYPE_OPTIONS.reduce((m, o) => ({ ...m, [o.value]: o.label }), {})
+
+

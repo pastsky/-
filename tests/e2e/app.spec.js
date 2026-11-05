@@ -294,6 +294,134 @@ test('新增模块冒烟：电梯台账、班组、反馈、导出中心', async
   await expect(lastMessage(page)).toContainText('导出任务已提交')
 })
 
+test('新增模块交互：电梯新增、班组新增、反馈处理', async ({ page }) => {
+  await loginAs(page, 'admin')
+
+  // 电梯新增
+  await page.getByRole('menuitem', { name: '电梯台账' }).click()
+  await page.waitForURL(/\/elevators$/)
+  await page.getByRole('button', { name: '新增电梯' }).click()
+  const elevatorDialog = page.locator('.el-dialog').filter({ hasText: '新增电梯' }).last()
+  await elevatorDialog.locator('.el-form-item').filter({ hasText: '楼栋' }).locator('input').fill('9栋')
+  await elevatorDialog.locator('.el-form-item').filter({ hasText: '品牌' }).locator('input').fill('E2E品牌')
+  await elevatorDialog.getByRole('button', { name: '保存' }).click()
+  await expect(lastMessage(page)).toContainText('新增成功')
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('9栋')
+
+  // 班组新增
+  await page.getByRole('menuitem', { name: '班组管理' }).click()
+  await page.waitForURL(/\/teams$/)
+  await page.getByRole('button', { name: '新建班组' }).click()
+  const teamDialog = page.locator('.el-dialog').filter({ hasText: '新建班组' }).last()
+  await teamDialog.getByPlaceholder('唯一编码，如 T01').fill('T99')
+  await teamDialog.locator('.el-form-item').filter({ hasText: '班组名称' }).locator('input').fill('E2E班组')
+  await teamDialog.getByRole('button', { name: '保存' }).click()
+  await expect(lastMessage(page)).toContainText('保存成功')
+  await expect(page.locator('.el-table__body-wrapper').first()).toContainText('E2E班组')
+
+  // 反馈处理
+  await page.getByRole('menuitem', { name: '反馈工单' }).click()
+  await page.waitForURL(/\/feedback$/)
+  await tableRow(page, '楼道还有残留水渍').getByRole('button', { name: '处理' }).click()
+  const feedbackDialog = page.locator('.el-dialog').filter({ hasText: '反馈详情' }).last()
+  await feedbackDialog.getByPlaceholder('说明处理结果，必填').fill('已安排保洁返工')
+  await feedbackDialog.getByRole('button', { name: '标记已处理' }).click()
+  await expect(lastMessage(page)).toContainText('已标记处理')
+  await expect(tableRow(page, '楼道还有残留水渍')).toContainText('已处理')
+})
+
+test('证书审核 / 巡检 / 维保模块', async ({ page }) => {
+  await loginAs(page, 'cs')
+
+  // 证书审核：待审证书优先，审核通过
+  await page.getByRole('menuitem', { name: '证书审核' }).click()
+  await page.waitForURL(/\/certificates$/)
+  const certRow = tableRow(page, '消防设施操作员')
+  await expect(certRow).toContainText('待审核')
+  await certRow.getByRole('button', { name: '审核' }).click()
+  const certDrawer = page.locator('.el-drawer').filter({ hasText: '审核留痕' }).last()
+  await expect(certDrawer).toContainText('提交')
+  await certDrawer.getByRole('button', { name: '通过' }).click()
+  await expect(lastMessage(page)).toContainText('已通过')
+  await expect(tableRow(page, '消防设施操作员')).toContainText('已通过')
+
+  // 证书标签与类型映射
+  await page.getByRole('tab', { name: '证书标签' }).click()
+  await expect(page.locator('.el-tab-pane:visible .el-table__body-wrapper')).toContainText('LIFT_CERT')
+  await page.getByRole('tab', { name: '工单类型映射' }).click()
+  await expect(page.locator('.el-tab-pane:visible .el-table__body-wrapper')).toContainText('强制持证')
+
+  // 维保计划与任务
+  await page.getByRole('menuitem', { name: '维保计划' }).click()
+  await page.waitForURL(/\/maintenance$/)
+  await expect(page.locator('.el-tab-pane:visible .el-table__body-wrapper')).toContainText(
+    '金桂园电梯季度维保'
+  )
+  await page.getByRole('tab', { name: '维保任务' }).click()
+  const maintRow = tableRow(page, 'MT202610280001')
+  await expect(maintRow).toContainText('已完工')
+  await maintRow.getByRole('button', { name: '详情' }).click()
+  const maintDrawer = page.locator('.el-drawer').filter({ hasText: '维保任务详情' }).last()
+  await expect(maintDrawer).toContainText('季度维保')
+  await maintDrawer.getByRole('button', { name: '确认' }).click()
+  await expect(lastMessage(page)).toContainText('已确认')
+
+  // 巡检：任务详情与驳回
+  await page.getByRole('menuitem', { name: '巡检管理' }).click()
+  await page.waitForURL(/\/inspection$/)
+  await expect(page.locator('.el-tab-pane:visible .el-table__body-wrapper')).toContainText(
+    '金桂园电梯月度巡检'
+  )
+  await page.getByRole('tab', { name: '巡检任务' }).click()
+  await tableRow(page, 'IN202610300001').getByRole('button', { name: '详情' }).click()
+  const inspDrawer = page.locator('.el-drawer').filter({ hasText: '巡检任务详情' }).last()
+  await expect(inspDrawer).toContainText('轿厢照明')
+  await expect(inspDrawer).toContainText('异常')
+  await inspDrawer.getByRole('button', { name: '驳回' }).click()
+  const rejectDialog = page.locator('.el-dialog').filter({ hasText: '驳回巡检任务' }).last()
+  await rejectDialog.getByPlaceholder('如：异常点位缺少现场照片').fill('请补充异常点位照片')
+  await rejectDialog.getByRole('button', { name: '确定驳回' }).click()
+  await expect(lastMessage(page)).toContainText('已驳回')
+})
+
+test('全页面巡检：无运行时报错', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console: ${m.text()}`)
+  })
+
+  await loginAs(page, 'admin')
+  const paths = [
+    '/dispatch',
+    '/work-orders',
+    '/work-orders/pool',
+    '/elevators',
+    '/maintenance',
+    '/inspection',
+    '/certificates',
+    '/teams',
+    '/feedback',
+    '/users',
+    '/stats',
+    '/exports',
+    '/broadcast',
+    '/calendar',
+    '/work-orders/1'
+  ]
+  for (const path of paths) {
+    await page.goto(path)
+    await page.waitForTimeout(500)
+    await expect(page.locator('.layout, .el-card').first()).toBeVisible()
+  }
+
+  // 忽略静态资源 404（Mock 图片指向 8080）与浏览器扩展噪声
+  const meaningful = errors.filter(
+    (e) => !/Failed to load resource|favicon|net::ERR/.test(e)
+  )
+  expect(meaningful).toEqual([])
+})
+
 test('路由权限拦截：业主访问 /users 被重定向', async ({ page }) => {
   await loginAs(page, 'resident')
   await page.goto('/users')

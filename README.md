@@ -62,6 +62,9 @@ npm run dev
 | 统计报表 | 管理端角色 | 11 项指标、趋势与类型分布、班组绩效、跳转导出中心 |
 | 导出中心 | 管理端角色 | 6 类报表 × Excel/CSV/PDF/PNG，异步任务轮询与下载 |
 | 电梯台账 | 管理端 / 维修工只读 | 增删改、三态、年检登记、超期红标、批量导入、档案三 tab |
+| 维保计划 | 管理端 | 计划 CRUD、按日期生成任务（指派个人 / 入任务池）、任务动作闭环 |
+| 巡检管理 | 管理端 | 点位模板、巡检计划与生成、任务点位结果与驳回 |
+| 证书审核 | 管理端 | 待审优先、通过/驳回/撤销/解锁、审核留痕、标签字典与类型映射 |
 | 班组管理 | 管理端 | 班组 CRUD、成员全量维护、审计日志查询 |
 | 反馈工单 | 管理端 | 未处理置顶、详情与处理（处理说明必填） |
 | 用户管理 | 管理员 / 分公司管理员 | 7 角色、班组、证书、逻辑停用与恢复 |
@@ -141,9 +144,12 @@ property-workorder-frontend/
 | `GET/POST/PUT/DELETE /api/elevators` · `/import` · `/{id}/inspect` · `/{id}/profile` | 电梯台账、批量导入、年检、档案聚合 |
 | `GET/POST/PUT/DELETE /api/teams` · `/{id}/members` · `GET /api/audit-logs` | 班组与审计日志 |
 | `GET /api/feedback` · `/{id}` · `PUT /{id}/resolve` | 反馈工单闭环 |
+| `GET /api/certificates` · `/{id}` · `/{id}/approve|reject|revoke|unlock` · `/api/repairer-tags` · `/api/type-cert-mappings` | 证书审核流与标签字典 |
+| `GET/POST /api/maintenance/plans` · `/{id}/generate` · `/api/maintenance/tasks` 及 assign/to-pool/accept/complete/reject/confirm | 维保计划与任务 |
+| `GET/POST /api/inspection/point-templates` · `/plans` · `/{id}/generate` · `/tasks` · `/{id}/reject` | 巡检模板、计划与任务 |
 | `POST/GET /api/exports` · `/{id}` · `/{id}/download` · `GET /api/stats/team-performance` | 异步导出中心与班组统计 |
 
-> 契约来源：后端交付的 `PR-006-contract-baseline.md`（v1.0）、`PR-012-022-contract-baseline.md`（v1.1）、`contract-v1.2-changelog.md`（v1.2）。未实现页面（证书审核、巡检、维保计划/任务）的接口已在契约中登记，待排期。
+> 契约来源：后端交付的 `PR-006-contract-baseline.md`（v1.0）、`PR-012-022-contract-baseline.md`（v1.1）、`contract-v1.2-changelog.md`（v1.2）。
 
 ## 契约对齐决议
 

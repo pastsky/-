@@ -77,7 +77,11 @@
           :initial-index="i"
           fit="cover"
           class="thumb"
-        />
+        >
+          <template #error>
+            <div class="img-error"><el-icon><Picture /></el-icon><span>图片失效</span></div>
+          </template>
+        </el-image>
       </div>
       <div v-if="detail.finishImages && detail.finishImages.length" class="images">
         <div class="images-label">完工照片</div>
@@ -89,7 +93,11 @@
           :initial-index="i"
           fit="cover"
           class="thumb"
-        />
+        >
+          <template #error>
+            <div class="img-error"><el-icon><Picture /></el-icon><span>图片失效</span></div>
+          </template>
+        </el-image>
         <span class="sub">{{ detail.finishRemark }}</span>
       </div>
     </el-card>
@@ -157,7 +165,11 @@
               :initial-index="i"
               fit="cover"
               class="thumb small"
-            />
+            >
+              <template #error>
+                <div class="img-error"><el-icon><Picture /></el-icon><span>失效</span></div>
+              </template>
+            </el-image>
           </div>
         </div>
       </div>
@@ -477,6 +489,7 @@ import {
 } from '@/api/workOrder'
 import { getEngineers, getGroups } from '@/api/user'
 import { uploadImage, compressImage } from '@/api/file'
+import { collectUploadedUrls, hasPendingUpload } from '@/utils/upload'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_STATUS_MAP,
@@ -759,17 +772,17 @@ function openComplete() {
 }
 
 async function handleUpload(options) {
-  try {
-    const compressed = await compressImage(options.file)
-    const url = await uploadImage(compressed)
-    options.onSuccess(url)
-  } catch (e) {
-    options.onError(e)
-  }
+  // 不能手动 onSuccess：async 返回值会被 el-upload 再写一次并覆盖 file.response
+  const compressed = await compressImage(options.file)
+  return uploadImage(compressed)
 }
 
 async function submitComplete() {
-  const images = completeFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (hasPendingUpload(completeFiles.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
+  const images = collectUploadedUrls(completeFiles.value)
   if (!images.length) {
     notify.warning('完工需至少上传 1 张现场照片')
     return
@@ -899,7 +912,11 @@ async function submitRemark() {
     notify.warning('请输入备注内容')
     return
   }
-  const images = remarkFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (hasPendingUpload(remarkFiles.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
+  const images = collectUploadedUrls(remarkFiles.value)
   submitting.value = true
   try {
     await addInternalNote(id, { remark: remarkForm.content, images })
@@ -933,7 +950,11 @@ async function submitForce() {
     notify.warning('改派需选择目标维修工')
     return
   }
-  const finishImages = forceFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (hasPendingUpload(forceFiles.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
+  const finishImages = collectUploadedUrls(forceFiles.value)
   if (forceForm.targetStatus === 'COMPLETED' && !finishImages.length) {
     notify.warning('补录完工需至少 1 张现场照片')
     return
@@ -1011,6 +1032,19 @@ onMounted(async () => {
 .thumb.small {
   width: 56px;
   height: 56px;
+}
+.img-error {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
 }
 .tag {
   margin-right: 4px;

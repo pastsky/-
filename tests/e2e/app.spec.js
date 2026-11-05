@@ -68,12 +68,31 @@ test('业主数据范围、动态表单、预约时间与新建工单', async ({
   await page.locator('.el-select-dropdown__item:visible').filter({ hasText: '10:00' }).first().click()
 
   await page.getByPlaceholder('请描述问题').fill('自动化测试创建的工单')
+
+  // 故障图片：压缩后必须提交服务端 url，不能是 blob: 预览地址
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'leak.png',
+    mimeType: 'image/png',
+    buffer: TINY_PNG
+  })
+  await expect(page.locator('.el-upload-list__item.is-success').first()).toBeVisible()
+
+  const createRequest = page.waitForRequest(
+    (r) => r.url().endsWith('/api/work-orders') && r.method() === 'POST'
+  )
   await page.getByRole('button', { name: '保存' }).click()
+  const createPayload = (await createRequest).postDataJSON()
+  expect(createPayload.images).toHaveLength(1)
+  expect(createPayload.images[0]).toMatch(/^https?:\/\//)
 
   await expect(lastMessage(page)).toContainText('创建成功')
   await page.waitForURL(/\/work-orders$/)
   const created = page.locator('.order-card').filter({ hasText: TITLE })
   await expect(created).toContainText('待派单')
+
+  // 坏图兜底：Mock 地址不可访问时展示占位而非破图
+  await created.getByRole('button', { name: '查看详情' }).click()
+  await expect(page.locator('.img-error').first()).toBeVisible()
 })
 
 test('客服派单：候选面板展示持证/在途/今日单量', async ({ page }) => {
@@ -128,7 +147,12 @@ test('维修工接单、完工必须上传图片', async ({ page }) => {
   })
   await expect(dialog.locator('.el-upload-list__item').first()).toBeVisible()
   await dialog.getByPlaceholder('说明处理结果').fill('已更换水管接口')
+  const completeRequest = page.waitForRequest(
+    (r) => r.url().includes('/complete') && r.method() === 'POST'
+  )
   await dialog.getByRole('button', { name: '提交完工' }).click()
+  const completePayload = (await completeRequest).postDataJSON()
+  expect(completePayload.images[0]).toMatch(/^https?:\/\//)
 
   await expect(lastMessage(page)).toContainText('已完工')
   await expect(page.locator('.el-card').first()).toContainText('待回访')

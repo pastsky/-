@@ -104,6 +104,7 @@ import { notify } from '@/utils/notify'
 import { Plus } from '@element-plus/icons-vue'
 import { createWorkOrder, updateWorkOrder, getWorkOrderDetail } from '@/api/workOrder'
 import { uploadImage, compressImage } from '@/api/file'
+import { collectUploadedUrls, hasPendingUpload } from '@/utils/upload'
 import { getCommunities, getElevators, getDutySchedules } from '@/api/basedata'
 import { workOrderSchema } from '@/schemas/workOrder'
 import { useZodForm } from '@/utils/useZodForm'
@@ -212,13 +213,10 @@ onMounted(async () => {
 })
 
 async function handleUpload(options) {
-  try {
-    const compressed = await compressImage(options.file)
-    const url = await uploadImage(compressed)
-    options.onSuccess(url)
-  } catch (e) {
-    options.onError(e)
-  }
+  // 不能在这里手动 options.onSuccess：async 返回值会被 el-upload 再次当作响应，
+  // 且第二次为 undefined 会覆盖 file.response；直接返回 { url } 由组件写入响应。
+  const compressed = await compressImage(options.file)
+  return uploadImage(compressed)
 }
 
 function handleRemove(file) {
@@ -236,6 +234,10 @@ function buildAppointment() {
 
 async function handleSubmit() {
   if (!validate(form)) return
+  if (hasPendingUpload(fileList.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
   const location = `${form.building || ''}${form.room || ''}`
   const payload = {
     title: form.title,
@@ -248,7 +250,7 @@ async function handleSubmit() {
     elevatorId: form.elevatorId,
     appointmentTime: buildAppointment(),
     description: form.description,
-    images: fileList.value.filter((f) => f.url).map((f) => f.url)
+    images: collectUploadedUrls(fileList.value)
   }
   submitting.value = true
   try {

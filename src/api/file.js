@@ -22,7 +22,9 @@ export function compressImage(file, maxWidth = 1920, quality = 0.8) {
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+            // 重编码为 JPEG 后扩展名必须同步改为 .jpg，否则后端按扩展名/MIME/魔数三重校验会 400
+            const base = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image'
+            resolve(new File([blob], `${base}.jpg`, { type: 'image/jpeg' }))
           } else {
             resolve(file)
           }

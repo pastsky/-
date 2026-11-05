@@ -305,6 +305,7 @@ import { getEngineers } from '@/api/user'
 import { getCommunities } from '@/api/basedata'
 import ListError from '@/components/ListError.vue'
 import { uploadImage, compressImage } from '@/api/file'
+import { collectUploadedUrls, hasPendingUpload } from '@/utils/upload'
 import { useUserStore } from '@/stores/user'
 import {
   CYCLE_TYPE_MAP,
@@ -544,17 +545,17 @@ function openComplete() {
 }
 
 async function handleUpload(options) {
-  try {
-    const compressed = await compressImage(options.file)
-    const url = await uploadImage(compressed)
-    options.onSuccess(url)
-  } catch (e) {
-    options.onError(e)
-  }
+  // 不能手动 onSuccess：async 返回值会被 el-upload 再写一次并覆盖 file.response
+  const compressed = await compressImage(options.file)
+  return uploadImage(compressed)
 }
 
 async function submitComplete() {
-  const images = completeFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (hasPendingUpload(completeFiles.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
+  const images = collectUploadedUrls(completeFiles.value)
   if (!images.length) {
     notify.warning('完工需至少上传 1 张现场照片')
     return

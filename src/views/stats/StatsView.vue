@@ -37,17 +37,9 @@
       <template #header>
         <div class="card-header">
           <span>维修工绩效</span>
-          <div class="ops">
-            <el-select v-model="exportFormat" size="small" style="width: 110px">
-              <el-option label="Excel" value="EXCEL" />
-              <el-option label="CSV" value="CSV" />
-              <el-option label="PDF" value="PDF" />
-              <el-option label="图表 PNG" value="PNG" />
-            </el-select>
-            <el-button type="primary" size="small" :loading="exporting" @click="handleExport">
-              异步导出
-            </el-button>
-          </div>
+          <el-button type="primary" size="small" @click="$router.push('/exports')">
+            打开导出中心
+          </el-button>
         </div>
       </template>
       <el-table :data="performance">
@@ -81,13 +73,11 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
-import { ElMessage } from 'element-plus'
 import {
   getStatsOverview,
   getStatsTrend,
   getTypeDistribution,
-  getEngineerPerformance,
-  exportStats
+  getEngineerPerformance
 } from '@/api/stats'
 import { WORK_ORDER_TYPE_MAP } from '@/utils/dict'
 
@@ -98,8 +88,6 @@ const performance = ref([])
 const granularity = ref('day')
 const trendRef = ref()
 const typeRef = ref()
-const exportFormat = ref('EXCEL')
-const exporting = ref(false)
 
 let trendChart = null
 let typeChart = null
@@ -178,16 +166,6 @@ async function loadData() {
   performance.value = await getEngineerPerformance()
   renderType()
   await loadTrend()
-}
-
-async function handleExport() {
-  exporting.value = true
-  try {
-    const data = await exportStats({ format: exportFormat.value })
-    ElMessage.success(data.message || '导出任务已提交')
-  } finally {
-    exporting.value = false
-  }
 }
 
 function handleResize() {

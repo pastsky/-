@@ -165,13 +165,13 @@ test('工单池抢单：在途校验与抢单成功', async ({ page }) => {
   await confirmBox(page)
   await expect(lastMessage(page)).toContainText('抢单成功')
 
-  // 状态机定版：抢单进入「待接单」，需再接单才进入「处理中」
+  // 契约（PR-009）：抢单 PENDING+pool_flag=1 -> PROCESSING，并写入 accept_time
   await page.getByRole('menuitem', { name: '工单管理' }).click()
   await page.getByPlaceholder('工单号 / 标题').fill('3栋2单元水管漏水')
   await page.getByRole('button', { name: '查询' }).click()
   const grabbedRow = tableRow(page, '3栋2单元水管漏水')
-  await expect(grabbedRow).toContainText('待接单')
-  await expect(grabbedRow).not.toContainText('处理中')
+  await expect(grabbedRow).toContainText('处理中')
+  await expect(grabbedRow).not.toContainText('待接单')
 })
 
 test('维修日历按时间段展示工单', async ({ page }) => {
@@ -189,10 +189,9 @@ test('客服工作台聚合待办与超时', async ({ page }) => {
   await page.getByRole('menuitem', { name: '客服工作台' }).click()
   await page.waitForURL(/\/dispatch$/)
 
-  await expect(page.locator('.metric-card')).toHaveCount(8)
-  await expect(page.getByText('逾期 / 超时聚合（按紧急度排序）')).toBeVisible()
-  await expect(page.getByText('待回访（超 24h 自动默认好评归档）')).toBeVisible()
-  await expect(page.getByText('池中待抢（超 4h 自动 L0 升级）')).toBeVisible()
+  await expect(page.locator('.metric-card')).toHaveCount(9)
+  await expect(page.getByText('逾期 / 超时聚合（按超时小时倒序）')).toBeVisible()
+  await expect(page.locator('.el-table__body-wrapper').first()).toBeVisible()
 })
 
 test('广播中心按角色发布并回显送达人数', async ({ page }) => {
@@ -223,8 +222,9 @@ test('统计报表：指标卡、班组列与异步导出', async ({ page }) => 
   await expect(page.locator('.el-table__header-wrapper')).toContainText('超时率')
   await expect(page.locator('.el-table__body-wrapper')).toContainText('李师傅')
 
-  await page.getByRole('button', { name: '异步导出' }).click()
-  await expect(lastMessage(page)).toContainText('导出任务已提交')
+  await page.getByRole('button', { name: '打开导出中心' }).click()
+  await page.waitForURL(/\/exports$/)
+  await expect(page.getByText('创建导出任务')).toBeVisible()
 })
 
 test('管理员用户管理：新增、停用保护、停用与恢复', async ({ page }) => {
@@ -262,6 +262,36 @@ test('管理员用户管理：新增、停用保护、停用与恢复', async ({
   // 恢复
   await tableRow(page, NEW_USERNAME).getByRole('button', { name: '恢复' }).click()
   await expect(lastMessage(page)).toContainText('已恢复')
+})
+
+test('新增模块冒烟：电梯台账、班组、反馈、导出中心', async ({ page }) => {
+  await loginAs(page, 'admin')
+
+  // 电梯台账
+  await page.getByRole('menuitem', { name: '电梯台账' }).click()
+  await page.waitForURL(/\/elevators$/)
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('JG-A1-01')
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('超期')
+
+  // 班组 + 审计日志
+  await page.getByRole('menuitem', { name: '班组管理' }).click()
+  await page.waitForURL(/\/teams$/)
+  await expect(page.locator('.el-table__body-wrapper').first()).toContainText('一班')
+  await page.getByRole('tab', { name: '审计日志' }).click()
+  await expect(page.getByText('业务类型')).toBeVisible()
+
+  // 反馈工单
+  await page.getByRole('menuitem', { name: '反馈工单' }).click()
+  await page.waitForURL(/\/feedback$/)
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('楼道还有残留水渍')
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('待处理')
+
+  // 导出中心
+  await page.getByRole('menuitem', { name: '导出中心' }).click()
+  await page.waitForURL(/\/exports$/)
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('EXP202610300001')
+  await page.getByRole('button', { name: '提交导出' }).click()
+  await expect(lastMessage(page)).toContainText('导出任务已提交')
 })
 
 test('路由权限拦截：业主访问 /users 被重定向', async ({ page }) => {

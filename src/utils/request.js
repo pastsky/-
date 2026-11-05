@@ -19,6 +19,10 @@ request.interceptors.request.use((config) => {
 // 响应拦截：统一处理 { code, message, data }
 request.interceptors.response.use(
   (response) => {
+    // 文件流（导出下载/模板）不走统一响应结构，直接返回 blob
+    if (response.config?.responseType === 'blob') {
+      return response.data
+    }
     const res = response.data
     if (res.code === 0) {
       return res.data

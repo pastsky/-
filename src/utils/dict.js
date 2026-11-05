@@ -130,13 +130,11 @@ export const WORK_ORDER_ACTION_MAP = {
 // ============ 待抢单池 ============
 export const POOL_FLAG_MAP = { 0: '常规', 1: '待抢单' }
 
-// 抢单失败的 5 类强校验原因（v12 #1）
+// 抢单失败提示（后端 BOP：1002 无权限/已收工等，3000 状态或并发，3001 不存在）
 export const GRAB_FAIL_REASON = {
-  1002: '数据权限不足',
-  3002: '缺少对应证书',
-  3003: '当前不在值班状态',
-  3004: '存在在途工单未完成',
-  3005: '与该电梯/维修工的预约时间冲突'
+  1002: '数据权限不足或当前不在值班状态',
+  3000: '已被抢 / 存在在途工单 / 预约冲突 / 状态已变化',
+  3001: '工单不存在'
 }
 
 // ============ 回访结果 ============
@@ -248,3 +246,118 @@ export function isArchived(status) {
 export function formatAppointment(value) {
   return value || '尽快'
 }
+
+// ============ 电梯台账（PR-007） ============
+export const ELEVATOR_STATUS_MAP = {
+  ACTIVE: '正常',
+  MAINTENANCE: '检修中',
+  INACTIVE: '停用'
+}
+
+export const ELEVATOR_STATUS_TAG = {
+  ACTIVE: 'success',
+  MAINTENANCE: 'warning',
+  INACTIVE: 'info'
+}
+
+export const ELEVATOR_STATUS_OPTIONS = Object.keys(ELEVATOR_STATUS_MAP).map((value) => ({
+  value,
+  label: ELEVATOR_STATUS_MAP[value]
+}))
+
+// ============ 班组（PR-014） ============
+export const TEAM_STATUS_MAP = { ACTIVE: '启用', DISABLED: '停用' }
+
+// ============ 证书映射要求（PR-017） ============
+export const CERT_REQUIREMENT_MAP = {
+  FORCE: '强制持证',
+  SUGGEST: '建议持证',
+  NONE: '不要求'
+}
+
+// ============ 反馈（PR-016） ============
+export const FEEDBACK_STATUS_MAP = {
+  SUBMITTED: '待处理',
+  RESOLVED: '已处理'
+}
+
+export const FEEDBACK_STATUS_TAG = {
+  SUBMITTED: 'warning',
+  RESOLVED: 'success'
+}
+
+export const FEEDBACK_STATUS_OPTIONS = Object.keys(FEEDBACK_STATUS_MAP).map((value) => ({
+  value,
+  label: FEEDBACK_STATUS_MAP[value]
+}))
+
+// ============ 报表导出中心（PR-022） ============
+export const REPORT_TYPE_MAP = {
+  WORK_ORDER: '工单明细',
+  MAINTENANCE: '维保任务明细',
+  INSPECTION: '巡检任务明细',
+  ENGINEER_PERFORMANCE: '维修工绩效',
+  TEAM_PERFORMANCE: '班组统计',
+  OVERVIEW: '运营总览'
+}
+
+export const REPORT_TYPE_OPTIONS = Object.keys(REPORT_TYPE_MAP).map((value) => ({
+  value,
+  label: REPORT_TYPE_MAP[value]
+}))
+
+export const EXPORT_FORMAT_MAP = {
+  EXCEL: 'Excel',
+  CSV: 'CSV',
+  PDF: 'PDF',
+  PNG: 'PNG 图片'
+}
+
+// PDF/PNG 仅支持部分报表；PNG 最多渲染 200 行
+export const EXPORT_FORMAT_MATRIX = {
+  EXCEL: ['WORK_ORDER', 'MAINTENANCE', 'INSPECTION', 'ENGINEER_PERFORMANCE', 'TEAM_PERFORMANCE', 'OVERVIEW'],
+  CSV: ['WORK_ORDER', 'MAINTENANCE', 'INSPECTION', 'ENGINEER_PERFORMANCE', 'TEAM_PERFORMANCE', 'OVERVIEW'],
+  PDF: ['OVERVIEW', 'ENGINEER_PERFORMANCE', 'TEAM_PERFORMANCE'],
+  PNG: ['OVERVIEW', 'TEAM_PERFORMANCE']
+}
+
+export const EXPORT_STATUS_MAP = {
+  QUEUED: '排队中',
+  RUNNING: '生成中',
+  SUCCESS: '已完成',
+  FAILED: '失败',
+  EXPIRED: '已过期'
+}
+
+export const EXPORT_STATUS_TAG = {
+  QUEUED: 'info',
+  RUNNING: 'warning',
+  SUCCESS: 'success',
+  FAILED: 'danger',
+  EXPIRED: 'info'
+}
+
+// ============ 审计（PR-014） ============
+export const AUDIT_BIZ_TYPE_MAP = {
+  CONFIG: '系统配置',
+  USER: '用户',
+  TEAM: '班组',
+  BROADCAST: '广播'
+}
+
+export const AUDIT_ACTION_MAP = {
+  CREATE: '创建',
+  UPDATE: '更新',
+  DISABLE: '停用',
+  ENABLE: '启用',
+  DELETE: '删除',
+  MEMBER_CHANGE: '成员变更',
+  BROADCAST: '广播'
+}
+
+// 兜底改单仅允许的 3 对状态
+export const FORCE_STATUS_MATRIX = {
+  PROCESSING: ['ASSIGNED', 'COMPLETED'],
+  PENDING: ['CANCELED']
+}
+

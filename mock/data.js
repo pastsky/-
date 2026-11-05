@@ -13,10 +13,10 @@ export const groups = [
 ]
 
 export const elevators = [
-  { id: 1, elevatorNo: 'JG-A1-01', communityId: 1, building: '1栋', status: 'ACTIVE', nextInspectionDate: '2026-12-20' },
-  { id: 2, elevatorNo: 'JG-A2-01', communityId: 1, building: '2栋', status: 'MAINTENANCE', nextInspectionDate: '2026-11-10' },
-  { id: 3, elevatorNo: 'JG-A3-01', communityId: 1, building: '3栋', status: 'INACTIVE', nextInspectionDate: '2026-10-28' },
-  { id: 4, elevatorNo: 'YH-B1-01', communityId: 2, building: 'B1栋', status: 'ACTIVE', nextInspectionDate: '2027-01-15' }
+  { id: 1, elevatorNo: 'JG-A1-01', branchId: 1, branchName: '金桂园小区', building: '1栋', unit: '1单元', location: '客梯厅', brand: '奥的斯', model: 'OTIS-3200', loadWeight: 1000, installDate: '2020-05-01', status: 'ACTIVE', inspectDate: '2026-01-10', nextInspectDate: '2026-12-20', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '' },
+  { id: 2, elevatorNo: 'JG-A2-01', branchId: 1, branchName: '金桂园小区', building: '2栋', unit: '1单元', location: '客梯厅', brand: '三菱', model: 'MIT-1000', loadWeight: 800, installDate: '2019-08-15', status: 'MAINTENANCE', inspectDate: '2025-11-16', nextInspectDate: '2026-11-10', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '主机异响，检修中' },
+  { id: 3, elevatorNo: 'JG-A3-01', branchId: 1, branchName: '金桂园小区', building: '3栋', unit: '2单元', location: '货梯厅', brand: '日立', model: 'HIT-2000', loadWeight: 1600, installDate: '2018-03-20', status: 'INACTIVE', inspectDate: '2025-10-20', nextInspectDate: '2026-10-28', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '已停用待拆除' },
+  { id: 4, elevatorNo: 'YH-B1-01', branchId: 2, branchName: '银桦苑小区', building: 'B1栋', unit: '1单元', location: '客梯厅', brand: '通力', model: 'KONE-5000', loadWeight: 1000, installDate: '2021-06-01', status: 'ACTIVE', inspectDate: '2026-02-01', nextInspectDate: '2027-01-15', inspectOrg: '省特种设备检验院', inspectCertUrl: '', remark: '' }
 ]
 
 // 值班表：按班组排班（本系统不做排班界面，仅消费）

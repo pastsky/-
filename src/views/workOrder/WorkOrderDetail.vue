@@ -108,6 +108,7 @@
         <el-button v-if="canClose" @click="handleClose">关闭</el-button>
         <el-button v-if="canRate" type="warning" @click="openRate">评价</el-button>
         <el-button v-if="canRemark" @click="openRemark">内部备注</el-button>
+        <el-button v-if="canForce" type="info" @click="openForce">兜底改单</el-button>
         <el-button v-if="canCancel" type="danger" @click="handleCancel">取消工单</el-button>
         <span v-if="!hasAction" class="sub">当前状态/角色无可执行操作</span>
       </div>
@@ -230,19 +231,14 @@
       </template>
     </el-dialog>
 
-    <!-- 退回 -->
+    <!-- 退回（维修工）：仅回说明，回到待派单，由客服重派或入池 -->
     <el-dialog v-model="returnVisible" title="退回工单" width="520px">
       <el-form label-width="80px">
-        <el-form-item label="去向">
-          <el-radio-group v-model="returnForm.target">
-            <el-radio value="REASSIGN">重新指派</el-radio>
-            <el-radio value="POOL">推入待抢单池</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="退回原因" required>
-          <el-input v-model="returnForm.reason" type="textarea" placeholder="如：无电梯作业证 / 现场无法进入" />
+        <el-form-item label="退回说明">
+          <el-input v-model="returnForm.remark" type="textarea" placeholder="如：无电梯作业证 / 现场无法进入（可留空）" />
         </el-form-item>
       </el-form>
+      <div class="sub">退回后回到「待派单」，由客服重新指派或推入待抢单池</div>
       <template #footer>
         <el-button @click="returnVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submitReturn">确定退回</el-button>
@@ -253,7 +249,7 @@
     <el-dialog v-model="transferVisible" title="转交工单" width="520px">
       <el-form label-width="80px">
         <el-form-item label="目标维修工">
-          <el-select v-model="transferForm.assigneeId" placeholder="请选择" style="width: 100%">
+          <el-select v-model="transferForm.targetAssigneeId" placeholder="请选择" style="width: 100%">
             <el-option
               v-for="e in engineers"
               :key="e.id"
@@ -406,6 +402,51 @@
         <el-button type="primary" :loading="submitting" @click="submitRemark">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 兜底改单：仅状态转移矩阵内的 3 对，原因必填 -->
+    <el-dialog v-model="forceVisible" title="兜底改单" width="540px">
+      <el-form label-width="90px">
+        <el-form-item label="目标状态" required>
+          <el-select v-model="forceForm.targetStatus" style="width: 100%">
+            <el-option
+              v-for="s in forceTargets"
+              :key="s"
+              :label="WORK_ORDER_STATUS_MAP[s]"
+              :value="s"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="forceForm.targetStatus === 'ASSIGNED'" label="改派给" required>
+          <el-select v-model="forceForm.assigneeId" style="width: 100%">
+            <el-option
+              v-for="e in engineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName}，在途 ${e.unfinishedCount}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="forceForm.targetStatus === 'COMPLETED'" label="完工照片" required>
+          <el-upload
+            v-model:file-list="forceFiles"
+            list-type="picture-card"
+            :http-request="handleUpload"
+            :limit="6"
+            multiple
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+        </el-form-item>
+        <el-form-item label="原因" required>
+          <el-input v-model="forceForm.reason" type="textarea" placeholder="改单原因，写入审计与流转日志" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">仅允许 PROCESSING→ASSIGNED、PROCESSING→COMPLETED、PENDING→CANCELED 三对状态</div>
+      <template #footer>
+        <el-button @click="forceVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForce">确认改单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -418,7 +459,7 @@ import {
   getWorkOrderDetail,
   getWorkOrderLogs,
   assignWorkOrder,
-  pushToPool,
+  toPool,
   returnWorkOrder,
   transferWorkOrder,
   acceptWorkOrder,
@@ -429,7 +470,8 @@ import {
   cancelWorkOrder,
   rateWorkOrder,
   auditAppointment,
-  addWorkOrderRemark
+  addInternalNote,
+  forceStatus
 } from '@/api/workOrder'
 import { getEngineers, getGroups } from '@/api/user'
 import { uploadImage, compressImage } from '@/api/file'
@@ -448,6 +490,7 @@ import {
   CERT_TYPE_MAP,
   CERT_REQUIRED_TYPES,
   REPAIRER_ROLES,
+  FORCE_STATUS_MATRIX,
   formatAppointment
 } from '@/utils/dict'
 
@@ -472,19 +515,22 @@ const reviewVisible = ref(false)
 const auditVisible = ref(false)
 const rateVisible = ref(false)
 const remarkVisible = ref(false)
+const forceVisible = ref(false)
 
 const assignForm = reactive({ assigneeId: null, groupId: null, priority: '', remark: '', toPool: false })
-const returnForm = reactive({ target: 'REASSIGN', reason: '' })
-const transferForm = reactive({ assigneeId: null, reason: '' })
+const returnForm = reactive({ remark: '' })
+const transferForm = reactive({ targetAssigneeId: null, reason: '' })
 const completeForm = reactive({ remark: '' })
 const rejectForm = reactive({ reason: '', remark: '' })
 const reviewForm = reactive({ result: 'SATISFIED', remark: '' })
 const auditForm = reactive({ approved: 1, newTime: '', reason: '' })
 const rateForm = reactive({ rating: 0, comment: '' })
 const remarkForm = reactive({ content: '' })
+const forceForm = reactive({ targetStatus: '', assigneeId: null, reason: '' })
 
 const completeFiles = ref([])
 const remarkFiles = ref([])
+const forceFiles = ref([])
 
 const role = computed(() => userStore.role)
 const status = computed(() => detail.value.status)
@@ -505,7 +551,11 @@ const canAuditAppointment = computed(
   () => isRepairer.value && isAssignee.value && !!detail.value.appointmentTime && !archived.value
 )
 const canReturn = computed(() => isRepairer.value && status.value === 'ASSIGNED' && isAssignee.value)
-const canTransfer = computed(() => isStaff.value && status.value === 'PROCESSING')
+const canTransfer = computed(
+  () =>
+    (isStaff.value || (isRepairer.value && isAssignee.value)) &&
+    ['ASSIGNED', 'PROCESSING'].includes(status.value)
+)
 const canAccept = computed(() => isRepairer.value && status.value === 'ASSIGNED' && isAssignee.value)
 const canComplete = computed(() => isRepairer.value && status.value === 'PROCESSING' && isAssignee.value)
 const canReject = computed(
@@ -523,6 +573,11 @@ const canRate = computed(
     isReporter.value
 )
 const canRemark = computed(() => isStaff.value || isRepairer.value)
+// 兜底改单：仅 3 对状态（PROCESSING→ASSIGNED / PROCESSING→COMPLETED / PENDING→CANCELED）
+const forceTargets = computed(() => FORCE_STATUS_MATRIX[status.value] || [])
+const canForce = computed(
+  () => ['CUSTOMER_SERVICE', 'ADMIN'].includes(role.value) && forceTargets.value.length > 0
+)
 const canCancel = computed(() => {
   if (['PENDING', 'ASSIGNED'].includes(status.value)) {
     return isStaff.value || (role.value === 'RESIDENT' && isReporter.value)
@@ -546,6 +601,7 @@ const hasAction = computed(
     canClose.value ||
     canRate.value ||
     canRemark.value ||
+    canForce.value ||
     canCancel.value
 )
 
@@ -599,7 +655,7 @@ async function submitAssign() {
     }
     submitting.value = true
     try {
-      await pushToPool(id, { reason: assignForm.remark, remark: assignForm.remark })
+      await toPool(id, { reason: assignForm.remark })
       assignVisible.value = false
       ElMessage.success('已推入待抢单池')
       loadDetail()
@@ -633,27 +689,22 @@ async function handlePushPool() {
     cancelButtonText: '取消',
     inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
-  await pushToPool(id, { reason: value, remark: value })
+  await toPool(id, { reason: value })
   ElMessage.success('已推入待抢单池')
   loadDetail()
 }
 
 function openReturn() {
-  returnForm.target = 'REASSIGN'
-  returnForm.reason = ''
+  returnForm.remark = ''
   returnVisible.value = true
 }
 
 async function submitReturn() {
-  if (!returnForm.reason) {
-    ElMessage.warning('请填写退回原因')
-    return
-  }
   submitting.value = true
   try {
-    await returnWorkOrder(id, { reason: returnForm.reason, target: returnForm.target })
+    await returnWorkOrder(id, { remark: returnForm.remark })
     returnVisible.value = false
-    ElMessage.success(returnForm.target === 'POOL' ? '已退回并入池' : '已退回待重派')
+    ElMessage.success('已退回待派单')
     loadDetail()
   } finally {
     submitting.value = false
@@ -662,13 +713,13 @@ async function submitReturn() {
 
 async function openTransfer() {
   await loadEngineers()
-  transferForm.assigneeId = null
+  transferForm.targetAssigneeId = null
   transferForm.reason = ''
   transferVisible.value = true
 }
 
 async function submitTransfer() {
-  if (!transferForm.assigneeId) {
+  if (!transferForm.targetAssigneeId) {
     ElMessage.warning('请选择目标维修工')
     return
   }
@@ -680,7 +731,7 @@ async function submitTransfer() {
   try {
     await transferWorkOrder(id, transferForm)
     transferVisible.value = false
-    ElMessage.success('已转交')
+    ElMessage.success('已转交，待对方接单')
     loadDetail()
   } finally {
     submitting.value = false
@@ -844,9 +895,52 @@ async function submitRemark() {
   const images = remarkFiles.value.filter((f) => f.url).map((f) => f.url)
   submitting.value = true
   try {
-    await addWorkOrderRemark(id, { content: remarkForm.content, images })
+    await addInternalNote(id, { remark: remarkForm.content, images })
     remarkVisible.value = false
     ElMessage.success('备注已保存')
+    loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openForce() {
+  await loadEngineers()
+  forceForm.targetStatus = forceTargets.value[0] || ''
+  forceForm.assigneeId = null
+  forceForm.reason = ''
+  forceFiles.value = []
+  forceVisible.value = true
+}
+
+async function submitForce() {
+  if (!forceForm.targetStatus) {
+    ElMessage.warning('请选择目标状态')
+    return
+  }
+  if (!forceForm.reason) {
+    ElMessage.warning('请填写改单原因')
+    return
+  }
+  if (forceForm.targetStatus === 'ASSIGNED' && !forceForm.assigneeId) {
+    ElMessage.warning('改派需选择目标维修工')
+    return
+  }
+  const finishImages = forceFiles.value.filter((f) => f.url).map((f) => f.url)
+  if (forceForm.targetStatus === 'COMPLETED' && !finishImages.length) {
+    ElMessage.warning('补录完工需至少 1 张现场照片')
+    return
+  }
+  submitting.value = true
+  try {
+    await forceStatus(id, {
+      targetStatus: forceForm.targetStatus,
+      assigneeId: forceForm.assigneeId || undefined,
+      finishImages: finishImages.length ? finishImages : undefined,
+      reason: forceForm.reason
+    })
+    forceVisible.value = false
+    ElMessage.success('改单成功')
     loadDetail()
   } finally {
     submitting.value = false

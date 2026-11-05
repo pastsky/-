@@ -61,10 +61,13 @@
       <el-table-column label="预约" width="150">
         <template #default="{ row }">{{ formatAppointment(row.appointmentTime) }}</template>
       </el-table-column>
-      <el-table-column label="标记" width="130">
+      <el-table-column label="标记" width="150">
         <template #default="{ row }">
           <el-tag v-if="row.myGroup" size="small" type="success">本组</el-tag>
           <el-tag v-if="row.waitHours >= 4" size="small" type="danger" class="tag">超时</el-tag>
+          <el-tooltip v-if="row.certBlocked" content="缺少或过期对应证书，无法抢单">
+            <el-tag size="small" type="info" class="tag">缺证</el-tag>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
@@ -73,6 +76,7 @@
             v-if="canGrab"
             type="primary"
             size="small"
+            :disabled="row.certBlocked"
             :loading="grabbingId === row.id"
             @click.stop="handleGrab(row)"
           >
@@ -156,12 +160,12 @@ async function handleGrab(row) {
   }
   grabbingId.value = row.id
   try {
+    // 契约：抢单成功 PENDING + pool_flag=1 -> PROCESSING，并写入 accept_time
     await grabWorkOrder(row.id)
-    // 抢单后进入「待接单」，需在工单详情接单才开始计时处理
-    ElMessage.success('抢单成功，请到工单详情接单')
+    ElMessage.success('抢单成功，工单已进入处理中')
     loadData()
   } catch (e) {
-    // 失败原因（数据权限/无证/值班外/在途/预约冲突）由请求拦截器统一提示
+    // 失败原因（1002 无权限/收工，3000 已被抢/在途/预约冲突）由请求拦截器统一提示
     loadData()
   } finally {
     grabbingId.value = null

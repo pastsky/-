@@ -89,8 +89,12 @@ const allMenus = [
   { path: '/work-orders', title: '工单管理', icon: 'List', roles: [] },
   { path: '/work-orders/pool', title: '工单池', icon: 'Box', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
   { path: '/calendar', title: '维修日历', icon: 'Calendar', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/elevators', title: '电梯台账', icon: 'OfficeBuilding', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/feedback', title: '反馈工单', icon: 'ChatDotRound', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
   { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN', 'BRANCH_ADMIN'] },
   { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
+  { path: '/exports', title: '导出中心', icon: 'Download', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/broadcast', title: '广播中心', icon: 'Promotion', roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
 ]
 

@@ -139,7 +139,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getWorkOrderList, batchWorkOrders } from '@/api/workOrder'
+import { getWorkOrderList, batchToPool, batchCancel } from '@/api/workOrder'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_STATUS_OPTIONS,
@@ -267,19 +267,19 @@ async function handleBatch(action) {
     cancelButtonText: '取消',
     inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
-  const result = await batchWorkOrders({
-    ids: selection.value.map((r) => r.id),
-    action,
-    reason: value
-  })
-  if (result.failed.length) {
+  const orderIds = selection.value.map((r) => r.id)
+  const result =
+    action === 'pool'
+      ? await batchToPool({ orderIds, reason: value })
+      : await batchCancel({ orderIds, reason: value })
+  if (result.failureCount) {
     ElMessageBox.alert(
-      result.failed.map((f) => `${f.orderNo || f.id}：${f.reason}`).join('\n'),
-      `失败 ${result.failed.length} 条`,
+      (result.failures || []).map((f) => `#${f.orderId}：${f.message}（${f.code}）`).join('\n'),
+      `失败 ${result.failureCount} 条`,
       { type: 'warning' }
     )
   }
-  ElMessage.success(`成功 ${result.success.length} 条`)
+  ElMessage.success(`成功 ${result.successCount} 条`)
   loadData()
 }
 

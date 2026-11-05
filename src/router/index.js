@@ -54,6 +54,30 @@ const routes = [
         meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
       },
       {
+        path: 'elevators',
+        name: 'ElevatorList',
+        component: () => import('@/views/elevator/ElevatorList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'ENGINEER', 'VENDOR_ENGINEER'] }
+      },
+      {
+        path: 'teams',
+        name: 'TeamList',
+        component: () => import('@/views/team/TeamList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
+        path: 'feedback',
+        name: 'FeedbackList',
+        component: () => import('@/views/feedback/FeedbackList.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+      },
+      {
+        path: 'exports',
+        name: 'ExportCenter',
+        component: () => import('@/views/export/ExportCenter.vue'),
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] }
+      },
+      {
         path: 'users',
         name: 'UserList',
         component: () => import('@/views/user/UserList.vue'),

@@ -1,9 +1,9 @@
 <template>
   <div>
     <el-row :gutter="14">
-      <el-col v-for="card in cards" :key="card.key" :span="3">
-        <el-card class="metric-card" shadow="hover" :class="{ alert: card.alert }" @click="goList(card)">
-          <div class="metric-value">{{ stats[card.key] ?? 0 }}</div>
+      <el-col v-for="card in cards" :key="card.key" :span="card.span || 6">
+        <el-card class="metric-card" shadow="hover" :class="{ alert: card.alert }" @click="goCard(card)">
+          <div class="metric-value">{{ todos[card.key] ?? 0 }}</div>
           <div class="metric-label">{{ card.label }}</div>
         </el-card>
       </el-col>
@@ -12,165 +12,145 @@
     <el-card class="section">
       <template #header>
         <div class="card-header">
-          <span>逾期 / 超时聚合（按紧急度排序）</span>
-          <el-button link type="primary" @click="loadData">刷新</el-button>
+          <span>逾期 / 超时聚合（按超时小时倒序）</span>
+          <div class="ops">
+            <el-radio-group v-model="overdueType" size="small" @change="loadOverdue">
+              <el-radio-button value="ALL">全部</el-radio-button>
+              <el-radio-button value="WORK_ORDER">工单</el-radio-button>
+              <el-radio-button value="MAINTENANCE">维保</el-radio-button>
+              <el-radio-button value="INSPECTION">巡检</el-radio-button>
+            </el-radio-group>
+            <el-button link type="primary" @click="loadAll">刷新</el-button>
+          </div>
         </div>
       </template>
-      <el-table v-loading="loading.overdue" :data="overdueList" @row-click="goDetail">
-        <el-table-column prop="orderNo" label="工单号" width="150" />
-        <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-        <el-table-column label="优先级" width="90">
+      <el-table v-loading="loading" :data="overdueList" @row-click="openRow">
+        <el-table-column label="类型" width="90">
           <template #default="{ row }">
-            <el-tag :type="WORK_ORDER_PRIORITY_TAG[row.priority]" size="small">
-              {{ WORK_ORDER_PRIORITY_MAP[row.priority] }}
+            <el-tag size="small" :type="bizTag(row.bizType)">
+              {{ BIZ_TYPE_MAP[row.bizType] || row.bizType }}
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="bizNo" label="单号" width="160" />
+        <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="WORK_ORDER_STATUS_TAG[row.status]" size="small">
-              {{ WORK_ORDER_STATUS_MAP[row.status] }}
+            <el-tag size="small" :type="WORK_ORDER_STATUS_TAG[row.status] || 'info'">
+              {{ WORK_ORDER_STATUS_MAP[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="升级" width="110">
+        <el-table-column label="优先级" width="86">
           <template #default="{ row }">
-            <el-tag v-if="row.escalationCount > 0" size="small" type="danger">
-              {{ ESCALATION_MAP[row.escalationCount] || '已升级' }}
+            <el-tag v-if="row.priority" :type="WORK_ORDER_PRIORITY_TAG[row.priority]" size="small">
+              {{ WORK_ORDER_PRIORITY_MAP[row.priority] }}
             </el-tag>
             <span v-else class="sub">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="超时" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" type="danger">{{ row.overdueHours }} h</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="assigneeName" label="处理人" width="100" />
-        <el-table-column label="超时" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row.overdue" size="small" type="danger">超时</el-tag>
-            <span v-else class="sub">—</span>
-          </template>
-        </el-table-column>
+        <el-table-column prop="branchName" label="小区" width="130" show-overflow-tooltip />
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click.stop="goDetail(row)">去处理</el-button>
+            <el-button link type="primary" @click.stop="openRow(row)">去处理</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        class="pagination"
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        layout="total, prev, pager, next"
+        @current-change="loadOverdue"
+      />
     </el-card>
-
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-card class="section">
-          <template #header>待回访（超 24h 自动默认好评归档）</template>
-          <el-table v-loading="loading.review" :data="reviewList" @row-click="goDetail">
-            <el-table-column prop="orderNo" label="工单号" width="150" />
-            <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip />
-            <el-table-column prop="assigneeName" label="处理人" width="90" />
-            <el-table-column label="操作" width="90">
-              <template #default="{ row }">
-                <el-button link type="primary" @click.stop="goDetail(row)">回访</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card class="section">
-          <template #header>池中待抢（超 4h 自动 L0 升级）</template>
-          <el-table v-loading="loading.pool" :data="poolList" @row-click="goDetail">
-            <el-table-column prop="orderNo" label="工单号" width="150" />
-            <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip />
-            <el-table-column label="优先级" width="86">
-              <template #default="{ row }">
-                <el-tag :type="WORK_ORDER_PRIORITY_TAG[row.priority]" size="small">
-                  {{ WORK_ORDER_PRIORITY_MAP[row.priority] }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="90">
-              <template #default="{ row }">
-                <el-button link type="primary" @click.stop="goDetail(row)">派单</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getWorkbenchStats } from '@/api/stats'
-import { getWorkOrderList } from '@/api/workOrder'
+import { getWorkbenchTodos, getWorkbenchOverdue } from '@/api/workbench'
 import {
   WORK_ORDER_STATUS_MAP,
   WORK_ORDER_STATUS_TAG,
   WORK_ORDER_PRIORITY_MAP,
-  WORK_ORDER_PRIORITY_TAG,
-  ESCALATION_MAP
+  WORK_ORDER_PRIORITY_TAG
 } from '@/utils/dict'
 
-const router = useRouter()
+const BIZ_TYPE_MAP = { WORK_ORDER: '工单', MAINTENANCE: '维保', INSPECTION: '巡检' }
 
-const stats = ref({})
+const router = useRouter()
+const todos = ref({})
 const overdueList = ref([])
-const reviewList = ref([])
-const poolList = ref([])
-const loading = reactive({ overdue: false, review: false, pool: false })
+const overdueType = ref('ALL')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const loading = ref(false)
 
 const cards = [
-  { key: 'pending', label: '待派单', nav: { status: 'PENDING' } },
-  { key: 'pool', label: '池中待抢', nav: { status: 'PENDING' } },
-  { key: 'assigned', label: '待接单', nav: { status: 'ASSIGNED' } },
-  { key: 'processing', label: '处理中', nav: { status: 'PROCESSING' } },
-  { key: 'pendingReview', label: '待回访', nav: { status: 'PENDING_REVIEW' } },
-  { key: 'overdue', label: '处理超时', nav: { overdue: 'true' }, alert: true },
-  { key: 'escalated', label: '已升级', nav: { escalated: true }, alert: true },
-  { key: 'urgent', label: '紧急未完结', nav: { priority: 'URGENT' }, alert: true }
+  { key: 'pendingAssignCount', label: '待派单', nav: { status: 'PENDING' } },
+  { key: 'pendingReviewCount', label: '待回访', nav: { status: 'PENDING_REVIEW' } },
+  { key: 'urgentPendingCount', label: '紧急未完结', nav: { priority: 'URGENT' }, alert: true },
+  { key: 'escalatedFinalCount', label: '升级终态', nav: { escalated: true }, alert: true },
+  { key: 'overdueWorkOrderCount', label: '工单超时', overdue: 'WORK_ORDER', alert: true },
+  { key: 'overdueMaintenanceCount', label: '维保逾期', overdue: 'MAINTENANCE', alert: true },
+  { key: 'overdueInspectionCount', label: '巡检逾期', overdue: 'INSPECTION', alert: true },
+  { key: 'feedbackSubmittedCount', label: '待处理反馈', route: '/feedback', alert: true },
+  { key: 'certPendingCount', label: '待审证书', route: '/certificates', span: 8 }
 ]
 
-function goList(card) {
-  router.push({ path: '/work-orders', query: card.nav })
+function bizTag(type) {
+  return { WORK_ORDER: 'primary', MAINTENANCE: 'warning', INSPECTION: 'success' }[type] || 'info'
 }
 
-function goDetail(row) {
-  if (row) router.push(`/work-orders/${row.id}`)
+function goCard(card) {
+  if (card.overdue) {
+    overdueType.value = card.overdue
+    page.value = 1
+    loadOverdue()
+    return
+  }
+  if (card.route) {
+    router.push(card.route)
+    return
+  }
+  if (card.nav) router.push({ path: '/work-orders', query: card.nav })
 }
 
-async function loadData() {
-  stats.value = await getWorkbenchStats()
+function openRow(row) {
+  if (row.bizType === 'WORK_ORDER') router.push(`/work-orders/${row.bizId}`)
+}
 
-  loading.overdue = true
+async function loadOverdue() {
+  loading.value = true
   try {
-    const [overdue, escalated] = await Promise.all([
-      getWorkOrderList({ status: 'PROCESSING', overdue: 'true', page: 1, pageSize: 20 }),
-      getWorkOrderList({ escalated: 'true', page: 1, pageSize: 20 })
-    ])
-    const map = new Map()
-    ;[...overdue.list, ...escalated.list].forEach((o) => map.set(o.id, o))
-    overdueList.value = Array.from(map.values())
+    const data = await getWorkbenchOverdue({
+      type: overdueType.value,
+      page: page.value,
+      pageSize: pageSize.value
+    })
+    overdueList.value = data.list
+    total.value = data.total
   } finally {
-    loading.overdue = false
-  }
-
-  loading.review = true
-  try {
-    const data = await getWorkOrderList({ status: 'PENDING_REVIEW', page: 1, pageSize: 10 })
-    reviewList.value = data.list
-  } finally {
-    loading.review = false
-  }
-
-  loading.pool = true
-  try {
-    const data = await getWorkOrderList({ status: 'PENDING', poolFlag: 1, page: 1, pageSize: 10 })
-    poolList.value = data.list
-  } finally {
-    loading.pool = false
+    loading.value = false
   }
 }
 
-onMounted(loadData)
+async function loadAll() {
+  todos.value = await getWorkbenchTodos()
+  await loadOverdue()
+}
+
+onMounted(loadAll)
 </script>
 
 <style scoped>
@@ -200,7 +180,16 @@ onMounted(loadData)
   align-items: center;
   justify-content: space-between;
 }
+.ops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .sub {
   color: var(--el-text-color-placeholder);
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
 }
 </style>

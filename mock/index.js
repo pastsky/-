@@ -355,12 +355,6 @@ export default [
   // ============ 基础数据 ============
   { url: '/api/users/groups', method: 'get', response: () => ok(groups.slice()) },
   { url: '/api/communities', method: 'get', response: () => ok(communities.slice()) },
-  { url: '/api/elevators', method: 'get', response: ({ query }) => {
-      let list = elevators.slice()
-      if (query?.communityId) list = list.filter((e) => e.communityId === Number(query.communityId))
-      return ok(list)
-    }
-  },
   {
     url: '/api/duty-schedules',
     method: 'get',
@@ -747,15 +741,14 @@ export default [
       if (!(order.status === 'PENDING' && order.poolFlag === 1)) return fail(3000, '该工单已被抢或不在池中')
       const invalid = validateTakeOrder(user, order)
       if (invalid) return fail(invalid.code, invalid.message)
-      // 状态机定版：抢单 PENDING -> ASSIGNED，仍需 ACCEPT 才能进入 PROCESSING。
-      // 理由：生命周期归档只定义 PENDING→ASSIGNED→PROCESSING；直连 PROCESSING 会让
-      // 「ASSIGNED 2h 未接回池」的升级链对抢单失效，且 acceptTime 不再代表实际开工时间。
-      order.status = 'ASSIGNED'
+      // 契约（PR-009/PR-021）：抢单 PENDING + pool_flag=1 -> PROCESSING，同时写 accept_time
+      order.status = 'PROCESSING'
       order.assigneeId = user.id
       order.assignTime = now()
+      order.acceptTime = now()
       order.poolFlag = 0
       order.updatedAt = now()
-      addLog(order.id, user.id, 'GRAB', 'PENDING', 'ASSIGNED', '', '抢单，待接单')
+      addLog(order.id, user.id, 'GRAB', 'PENDING', 'PROCESSING', '', '抢单')
       addNotification(order.reporterId, '工单已被接单', `工单 ${order.orderNo} 已被 ${user.realName} 抢单`, 'ACCEPTED', order.id)
       return ok({ id: order.id, status: order.status })
     }
@@ -824,19 +817,23 @@ export default [
       const user = me(headers)
       const order = getOrder(query.id)
       if (!order) return fail(3001, '工单不存在')
-      if (!['CUSTOMER_SERVICE', 'ADMIN', 'BRANCH_ADMIN'].includes(user.role)) return fail(1002, '无权转交')
-      if (order.status !== 'PROCESSING') return fail(3000, '仅处理中工单可转交')
+      if (!['CUSTOMER_SERVICE', 'ADMIN', 'BRANCH_ADMIN'].includes(user.role) && order.assigneeId !== user.id) {
+        return fail(1002, '无权转交')
+      }
+      if (!['ASSIGNED', 'PROCESSING'].includes(order.status)) return fail(3000, '当前状态不允许转交')
       const b = parseBody(body)
       if (!b.reason) return fail(1000, '请填写转交原因')
-      const target = findUser(b.assigneeId)
+      const target = findUser(b.targetAssigneeId)
       if (!target) return fail(4000, '目标维修工不存在')
       const invalid = validateTakeOrder(target, order)
       if (invalid) return fail(invalid.code, invalid.message)
       const from = order.assigneeId
       order.assigneeId = target.id
+      order.status = 'ASSIGNED'
       order.assignTime = now()
+      order.acceptTime = null
       order.updatedAt = now()
-      addLog(order.id, user.id, 'TRANSFER', 'PROCESSING', 'PROCESSING', b.remark, b.reason)
+      addLog(order.id, user.id, 'TRANSFER', 'PROCESSING', 'ASSIGNED', b.remark, b.reason)
       addNotification(target.id, '工单已转交给您', `工单 ${order.orderNo} 已转交给您处理`, 'ASSIGNED', order.id)
       return ok({ id: order.id, fromAssigneeId: from, status: order.status })
     }
@@ -850,25 +847,17 @@ export default [
       if (!order) return fail(3001, '工单不存在')
       if (order.status !== 'ASSIGNED') return fail(3000, '当前状态不允许退回')
       const b = parseBody(body)
-      if (!b.reason) return fail(1000, '请填写退回原因')
       const from = order.status
       order.assigneeId = null
       order.assignTime = null
       order.status = 'PENDING'
-      // 退回去向二选一：REASSIGN 重派（留在待派单），POOL 入池
-      order.poolFlag = b.target === 'POOL' ? 1 : 0
+      // 契约：退回仅回说明，pool_flag 保持不变；是否入池由客服单独调 /to-pool
       order.updatedAt = now()
-      addLog(order.id, user.id, 'RETURN', from, 'PENDING', b.remark, b.reason)
+      addLog(order.id, user.id, 'RETURN', from, 'PENDING', b.remark, null)
       users
         .filter((u) => ['CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'ADMIN'].includes(u.role) && u.status === 'ACTIVE')
         .forEach((cs) =>
-          addNotification(
-            cs.id,
-            '工单被退回',
-            `工单 ${order.orderNo} 被退回（${b.target === 'POOL' ? '已入池' : '待重派'}）`,
-            'RETURNED',
-            order.id
-          )
+          addNotification(cs.id, '工单被退回', `工单 ${order.orderNo} 被退回，请重新指派或入池`, 'RETURNED', order.id)
         )
       return ok({ id: order.id, status: order.status, poolFlag: order.poolFlag })
     }

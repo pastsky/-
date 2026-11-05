@@ -55,11 +55,15 @@ npm run dev
 | --- | --- | --- |
 | 客服工作台 | 管理端角色 | 待办聚合、逾期/超时聚合栏、待回访、池中待抢 |
 | 工单管理 | 全部 | 状态/类型/优先级/池状态/日期筛选、紧急置顶、批量入池与取消 |
-| 工单详情 | 全部 | 派单（持证/值班/在途/今日单量/超时率面板）、退回二选一、转交、接单、完工（图片必填）、完工驳回、回访、评价、内部备注、流转记录 |
-| 工单池 | 维修工 / 管理端只读 | 本组优先排序、4h 超时标记、抢单 5 类校验（数据权限/无证/值班外/在途/预约冲突） |
-| 维修日历 | 维修工 / 管理端只读 | 按接单→完工时间段渲染，30 分钟刻度，点击进入工单 |
+| 工单详情 | 全部 | 派单（持证/值班/在途/今日单量/超时率面板）、退回（说明）、转交、接单、完工（图片必填）、完工驳回、回访、兜底改单、内部备注、流转记录 |
+| 工单池 | 维修工 / 管理端只读 | 本组优先排序、4h 超时标记、缺证置灰、抢单并发校验（在途/持证/值班/预约冲突） |
+| 维修日历 | 维修工 / 管理端只读 | 按 `startDate/endDate` 聚合工单/维保/巡检/值班，30 分钟刻度 |
 | 广播中心 | 管理员 / 客服 | 按全员/角色/小区广播，回显送达人数 |
-| 统计报表 | 管理端角色 | 11 项指标、趋势与类型分布、班组绩效、异步导出（Excel/CSV/PDF/PNG） |
+| 统计报表 | 管理端角色 | 11 项指标、趋势与类型分布、班组绩效、跳转导出中心 |
+| 导出中心 | 管理端角色 | 6 类报表 × Excel/CSV/PDF/PNG，异步任务轮询与下载 |
+| 电梯台账 | 管理端 / 维修工只读 | 增删改、三态、年检登记、超期红标、批量导入、档案三 tab |
+| 班组管理 | 管理端 | 班组 CRUD、成员全量维护、审计日志查询 |
+| 反馈工单 | 管理端 | 未处理置顶、详情与处理（处理说明必填） |
 | 用户管理 | 管理员 / 分公司管理员 | 7 角色、班组、证书、逻辑停用与恢复 |
 
 ## 两种运行模式
@@ -115,48 +119,49 @@ property-workorder-frontend/
 - 完整接口定义见 [docs/运维工单平台前后端开发规范.md](docs/运维工单平台前后端开发规范.md)（数据模型见第 5 节、接口清单见第 6 节）
 - 可导入 Apifox 的 OpenAPI 文件见 [docs/property-workorder-openapi.json](docs/property-workorder-openapi.json)
 
-## 增量接口（v1.0 设计，Mock 已实现）
+## 增量接口（对齐后端契约 v1.2）
 
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/work-orders/pool` | 待抢单池，`show_all=true` 取消本组优先排序 |
-| `POST /api/work-orders/{id}/grab` | 抢单，失败按 5 类原因返回 `1002/3002/3003/3004/3005` |
-| `POST /api/work-orders/{id}/reassign-to-pool` | 推送入池（原因必填） |
-| `POST /api/work-orders/{id}/transfer` | 转交（目标人同校验，原因必填） |
-| `POST /api/work-orders/{id}/reject` | 完工驳回，回处理中，最多 3 次 |
+| `POST /api/work-orders/{id}/grab` | 抢单：`PENDING + pool_flag=1 → PROCESSING` |
+| `POST /api/work-orders/{id}/to-pool` | 推送入池（`reason` 必填） |
+| `POST /api/work-orders/{id}/return` | 维修工退回（仅 `remark`，回 `PENDING`） |
+| `POST /api/work-orders/{id}/transfer` | 转交（`targetAssigneeId` + `reason`） |
+| `POST /api/work-orders/{id}/reject` | 完工驳回，回 `PROCESSING`，上限 3 次 |
 | `POST /api/work-orders/{id}/review` | 回访结果 `SATISFIED` / `UNSATISFIED` |
+| `POST /api/work-orders/{id}/force-status` | 兜底改单，仅 3 对状态 |
+| `POST /api/work-orders/{id}/internal-notes` | 内部备注（`remark` + `images` ≤3） |
 | `POST /api/work-orders/{id}/audit-appointment` | 审核预约（通过/改约） |
-| `GET /api/work-orders/calendar` | 维修日历，按 `month`、`repairerId` 聚合 |
-| `POST /api/work-orders/{id}/remarks` | 内部备注（图片 ≤3 张） |
-| `POST /api/work-orders/batch` | 批量入池/取消，逐单返回失败原因 |
-| `POST /api/notifications/broadcast` | 广播，`targetScope` = `ALL/ROLE/BRANCH` |
-| `GET /api/stats/workbench` | 工作台待办聚合计数 |
+| `POST /api/work-orders/batch-assign` · `batch-to-pool` · `batch-cancel` | 批量操作，返回 `successCount/failureCount/failures` |
+| `GET /api/work-orders/global-search` | 全局搜索（单号/业主/电话/电梯） |
+| `GET /api/engineers/{id}/calendar` | 维修日历，`startDate/endDate`（≤31 天）+ `types` |
+| `GET /api/cs-workbench/todos` · `/overdue` | 客服工作台待办计数与逾期聚合 |
+| `GET /api/appointments/change-limit` · `/release` · `/duty-availability` | 改约频控与值班可用性 |
+| `GET/POST/PUT/DELETE /api/elevators` · `/import` · `/{id}/inspect` · `/{id}/profile` | 电梯台账、批量导入、年检、档案聚合 |
+| `GET/POST/PUT/DELETE /api/teams` · `/{id}/members` · `GET /api/audit-logs` | 班组与审计日志 |
+| `GET /api/feedback` · `/{id}` · `PUT /{id}/resolve` | 反馈工单闭环 |
+| `POST/GET /api/exports` · `/{id}` · `/{id}/download` · `GET /api/stats/team-performance` | 异步导出中心与班组统计 |
 
-> 设计归档只给出了部分路径与字段，上表中工作台、日历、批量等为前端约定的探针路径，Mock 与之一致；联调前需与后端确认最终契约。工单状态新增 `PENDING_REVIEW`（待回访）与 `ESCALATED_FINAL`（升级终态）。
+> 契约来源：后端交付的 `PR-006-contract-baseline.md`（v1.0）、`PR-012-022-contract-baseline.md`（v1.1）、`contract-v1.2-changelog.md`（v1.2）。未实现页面（证书审核、巡检、维保计划/任务）的接口已在契约中登记，待排期。
 
 ## 契约对齐决议
 
-### 1. 抢单状态机：`PENDING → ASSIGNED`（定版）
+### 1. 抢单状态机：`PENDING → PROCESSING`（定版，与后端实现一致）
 
-两份归档口径冲突：主方案 Q1 写「抢单仍走 `PENDING → PROCESSING`」，生命周期归档的状态链是 `PENDING → ASSIGNED → PROCESSING`。**按生命周期归档执行**，理由：
+主方案 Q1 与生命周期归档对抢单出口存在冲突（`PROCESSING` vs `ASSIGNED`）。后端 PR-009/PR-021 已按 **`PENDING + pool_flag=1 → PROCESSING`** 交付并写入 `accept_time`，前端已对齐：
 
-- 生命周期归档是状态机的唯一完整定义（含 ACCEPT / RETURN / REJECT / 回访），后续 v3~v12 均以其为基线；
-- 抢单与派单出口一致，避免同一工单存在「抢单直达处理中、派单需接单」两条语义；
-- `ASSIGNED` 2h 未接自动回池的升级链对抢单同样生效；若直达 `PROCESSING`，该链对池单失效；
-- `acceptTime` 保持「实际开工时间」口径，日历与工时统计才准确。
-
-落地：`POST /api/work-orders/{id}/grab` 成功后返回 `status=ASSIGNED`，维修工需再调用 `accept` 才进入 `PROCESSING`；抢单并发校验（在途/持证/值班/预约冲突）仍在抢单前置执行。
+- 抢单成功即进入「处理中」，无需再接单；
+- 抢单前置校验（在途/持证/值班/预约冲突）失败统一返回 `1002`（无权限/收工）或 `3000`（已被抢/在途/冲突），前端按码提示；
+- `ASSIGNED → PROCESSING` 的 `ACCEPT` 仍用于**派单**场景，两条路径并存但互不混用。
 
 ### 2. 完工照片：必填（`images` 1~6 张）
 
-需求 FR-WO-08 与生命周期归档均要求「维修工完工必须上传现场照片，业主可见」，而 v1.4 后端契约未包含该字段。**按需求执行必填**，并已把契约补齐：
+需求 FR-WO-08 与生命周期归档均要求「维修工完工必须上传现场照片，业主可见」，后端 PR-019 已实现必填校验，前端同步强制：
 
-- `POST /api/work-orders/{id}/complete` 请求体改为 `CompleteWorkOrderRequest`：`images` 必填（`minItems: 1`、`maxItems: 6`），`remark` 可选；
-- 缺失图片时后端返回业务码 `1000`，前端在提交前也会拦截并提示；
-- `WorkOrderDetailVO` 增加 `finishImages`、`finishRemark`、`poolFlag`、`appointmentTime`、`reviewResult` 字段；
+- `POST /api/work-orders/{id}/complete`：`images` 必填 1~6 张、`remark` 可选；缺失返回 `1000`；
+- 详情返回 `finishImages`、`finishRemark`；业主可见，客服驳回时据此判断；
 - 契约文件已同步：[docs/property-workorder-openapi.json](docs/property-workorder-openapi.json)。
-
-> 后端待办：`work_order` 表补 `finish_images`（逗号串或 JSON）、`finish_remark`；`complete` 接口加非空校验并落库；详情接口回传上述字段。
 
 ## 端到端测试
 

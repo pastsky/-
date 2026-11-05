@@ -50,3 +50,26 @@ body {
 .el-tag {
   border-radius: 4px;
 }
+
+/* ============ 统一路由过渡（对应设计规范「动效集中封装」） ============ */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active,
+  .page-fade-leave-active {
+    transition: none;
+  }
+}

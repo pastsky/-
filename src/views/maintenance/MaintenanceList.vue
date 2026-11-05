@@ -8,7 +8,8 @@
           <el-input v-model="planKeyword" placeholder="计划名称" clearable style="width: 190px" @change="loadPlans" />
           <span class="sub">计划按电梯范围周期生成任务；生成时选择「指派个人」或「推入任务池」</span>
         </div>
-        <el-table v-loading="planLoading" :data="plans">
+        <ListError :failed="loadError" :loading="planLoading" @retry="reloadAll" />
+        <el-table v-if="!loadError" v-loading="planLoading" :data="plans">
           <el-table-column prop="planName" label="计划名称" min-width="170" />
           <el-table-column prop="branchName" label="小区" width="130" show-overflow-tooltip />
           <el-table-column label="频率" width="100">
@@ -60,7 +61,8 @@
             <el-button type="primary" @click="loadTasks">查询</el-button>
           </el-form-item>
         </el-form>
-        <el-table v-loading="taskLoading" :data="tasks">
+        <ListError :failed="loadError" :loading="taskLoading" @retry="reloadAll" />
+        <el-table v-if="!loadError" v-loading="taskLoading" :data="tasks">
           <el-table-column prop="taskNo" label="任务号" width="160" />
           <el-table-column prop="elevatorNo" label="电梯" width="140" />
           <el-table-column prop="planName" label="所属计划" min-width="140" show-overflow-tooltip />
@@ -274,7 +276,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { Plus } from '@element-plus/icons-vue'
 import {
   getMaintenancePlans,
@@ -292,6 +294,7 @@ import {
 } from '@/api/maintenance'
 import { getEngineers } from '@/api/user'
 import { getCommunities } from '@/api/basedata'
+import ListError from '@/components/ListError.vue'
 import { uploadImage, compressImage } from '@/api/file'
 import { useUserStore } from '@/stores/user'
 import {
@@ -303,7 +306,7 @@ import {
 
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.role === 'ADMIN')
-const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'].includes(userStore.role))
+const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE'].includes(userStore.role))
 const isAssignee = computed(() => current.value.assigneeId === userStore.currentUser?.id)
 
 const tab = ref('plans')
@@ -312,6 +315,7 @@ const communities = ref([])
 const engineers = ref([])
 
 const planLoading = ref(false)
+const loadError = ref(false)
 const plans = ref([])
 const planKeyword = ref('')
 
@@ -355,9 +359,17 @@ async function loadPlans() {
   try {
     const data = await getMaintenancePlans({ keyword: planKeyword.value || undefined })
     plans.value = data.list || data
+    loadError.value = false
+  } catch (e) {
+    loadError.value = true
   } finally {
     planLoading.value = false
   }
+}
+
+function reloadAll() {
+  loadPlans()
+  loadTasks()
 }
 
 async function loadTasks() {
@@ -372,6 +384,9 @@ async function loadTasks() {
     })
     tasks.value = data.list
     taskTotal.value = data.total
+    loadError.value = false
+  } catch (e) {
+    loadError.value = true
   } finally {
     taskLoading.value = false
   }
@@ -409,14 +424,14 @@ function openPlanEdit(row) {
 
 async function submitPlan() {
   if (!planForm.planName) {
-    ElMessage.warning('请填写计划名称')
+    notify.warning('请填写计划名称')
     return
   }
   submitting.value = true
   try {
     if (planEdit.value) await updateMaintenancePlan(planId.value, planForm)
     else await createMaintenancePlan(planForm)
-    ElMessage.success('保存成功')
+    notify.success('保存成功')
     planVisible.value = false
     loadPlans()
   } finally {
@@ -433,13 +448,13 @@ function openGenerate(row) {
 
 async function submitGenerate() {
   if (!generateForm.planDate) {
-    ElMessage.warning('请选择计划日期')
+    notify.warning('请选择计划日期')
     return
   }
   submitting.value = true
   try {
     const res = await generateMaintenanceTasks(generatePlanId.value, generateForm)
-    ElMessage.success(`生成 ${res.generated} 条，跳过 ${res.skipped} 条`)
+    notify.success(`生成 ${res.generated} 条，跳过 ${res.skipped} 条`)
     generateVisible.value = false
     loadPlans()
     loadTasks()
@@ -465,13 +480,13 @@ async function openAssign() {
 
 async function submitAssign() {
   if (!assigneeId.value) {
-    ElMessage.warning('请选择维修工')
+    notify.warning('请选择维修工')
     return
   }
   submitting.value = true
   try {
     await assignMaintenanceTask(current.value.id, { assigneeId: assigneeId.value })
-    ElMessage.success('已指派')
+    notify.success('已指派')
     assignVisible.value = false
     taskVisible.value = false
     loadTasks()
@@ -482,14 +497,14 @@ async function submitAssign() {
 
 async function handleToPool() {
   await toPoolMaintenanceTask(current.value.id, {})
-  ElMessage.success('已推入任务池')
+  notify.success('已推入任务池')
   taskVisible.value = false
   loadTasks()
 }
 
 async function handleAccept() {
   await acceptMaintenanceTask(current.value.id)
-  ElMessage.success('已接单')
+  notify.success('已接单')
   taskVisible.value = false
   loadTasks()
 }
@@ -513,7 +528,7 @@ async function handleUpload(options) {
 async function submitComplete() {
   const images = completeFiles.value.filter((f) => f.url).map((f) => f.url)
   if (!images.length) {
-    ElMessage.warning('完工需至少上传 1 张现场照片')
+    notify.warning('完工需至少上传 1 张现场照片')
     return
   }
   submitting.value = true
@@ -523,7 +538,7 @@ async function submitComplete() {
       images,
       finishImages: images
     })
-    ElMessage.success('已完工，待客服确认')
+    notify.success('已完工，待客服确认')
     completeVisible.value = false
     taskVisible.value = false
     loadTasks()
@@ -539,13 +554,13 @@ function openReject() {
 
 async function submitReject() {
   if (!rejectReason.value.trim()) {
-    ElMessage.warning('请填写驳回原因')
+    notify.warning('请填写驳回原因')
     return
   }
   submitting.value = true
   try {
     await rejectMaintenanceTask(current.value.id, { reason: rejectReason.value })
-    ElMessage.success('已驳回')
+    notify.success('已驳回')
     rejectVisible.value = false
     taskVisible.value = false
     loadTasks()
@@ -556,15 +571,20 @@ async function submitReject() {
 
 async function handleConfirm() {
   await confirmMaintenanceTask(current.value.id, {})
-  ElMessage.success('已确认')
+  notify.success('已确认')
   taskVisible.value = false
   loadTasks()
 }
 
 onMounted(async () => {
-  communities.value = await getCommunities()
+  // 字典与主列表解耦：小区接口失败不影响计划/任务加载
   loadPlans()
   loadTasks()
+  try {
+    communities.value = await getCommunities()
+  } catch (e) {
+    communities.value = []
+  }
 })
 </script>
 

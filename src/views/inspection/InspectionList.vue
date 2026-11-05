@@ -4,11 +4,12 @@
       <!-- 巡检计划 -->
       <el-tab-pane label="巡检计划" name="plans">
         <div class="toolbar">
-          <el-button v-if="canWrite" type="primary" @click="openPlanCreate">新建计划</el-button>
+          <el-button v-if="isAdmin" type="primary" @click="openPlanCreate">新建计划</el-button>
           <el-input v-model="planKeyword" placeholder="计划名称" clearable style="width: 190px" @change="loadPlans" />
           <span class="sub">计划生成任务后按点位模板逐项录入结果；异常点位自动转工单</span>
         </div>
-        <el-table v-loading="planLoading" :data="plans">
+        <ListError :failed="loadError" :loading="planLoading" @retry="reloadAll" />
+        <el-table v-if="!loadError" v-loading="planLoading" :data="plans">
           <el-table-column prop="planName" label="计划名称" min-width="160" />
           <el-table-column label="电梯类型" width="110">
             <template #default="{ row }">{{ ELEVATOR_TYPE_MAP[row.elevatorType] || '全部' }}</template>
@@ -56,7 +57,8 @@
             <el-button type="primary" @click="loadTasks">查询</el-button>
           </el-form-item>
         </el-form>
-        <el-table v-loading="taskLoading" :data="tasks">
+        <ListError :failed="loadError" :loading="taskLoading" @retry="reloadAll" />
+        <el-table v-if="!loadError" v-loading="taskLoading" :data="tasks">
           <el-table-column prop="taskNo" label="任务号" width="160" />
           <el-table-column prop="elevatorNo" label="电梯" width="140" />
           <el-table-column prop="planName" label="计划" min-width="140" show-overflow-tooltip />
@@ -301,7 +303,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import {
   getInspectionPlans,
   createInspectionPlan,
@@ -313,6 +315,7 @@ import {
   getPointTemplates,
   createPointTemplate
 } from '@/api/inspection'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
   ELEVATOR_TYPE_MAP,
@@ -328,12 +331,13 @@ import {
 
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.role === 'ADMIN')
-const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'].includes(userStore.role))
+const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE'].includes(userStore.role))
 
 const tab = ref('plans')
 const submitting = ref(false)
 
 const planLoading = ref(false)
+const loadError = ref(false)
 const plans = ref([])
 const planKeyword = ref('')
 
@@ -381,9 +385,18 @@ async function loadPlans() {
   try {
     const data = await getInspectionPlans({ keyword: planKeyword.value || undefined })
     plans.value = data.list || data
+    loadError.value = false
+  } catch (e) {
+    loadError.value = true
   } finally {
     planLoading.value = false
   }
+}
+
+function reloadAll() {
+  loadPlans()
+  loadTasks()
+  loadTemplates()
 }
 
 async function loadTasks() {
@@ -397,6 +410,9 @@ async function loadTasks() {
     })
     tasks.value = data.list
     taskTotal.value = data.total
+    loadError.value = false
+  } catch (e) {
+    loadError.value = true
   } finally {
     taskLoading.value = false
   }
@@ -407,6 +423,9 @@ async function loadTemplates() {
   try {
     const data = await getPointTemplates()
     templates.value = data.list || data
+    loadError.value = false
+  } catch (e) {
+    loadError.value = true
   } finally {
     templateLoading.value = false
   }
@@ -440,14 +459,14 @@ function openPlanEdit(row) {
 
 async function submitPlan() {
   if (!planForm.planName) {
-    ElMessage.warning('请填写计划名称')
+    notify.warning('请填写计划名称')
     return
   }
   submitting.value = true
   try {
     if (planEdit.value) await updateInspectionPlan(planId.value, planForm)
     else await createInspectionPlan(planForm)
-    ElMessage.success('保存成功')
+    notify.success('保存成功')
     planVisible.value = false
     loadPlans()
   } finally {
@@ -464,13 +483,13 @@ function openGenerate(row) {
 
 async function submitGenerate() {
   if (!generateForm.startDate || !generateForm.endDate) {
-    ElMessage.warning('请选择日期区间')
+    notify.warning('请选择日期区间')
     return
   }
   submitting.value = true
   try {
     const res = await generateInspectionTasks(generatePlanId.value, generateForm)
-    ElMessage.success(`生成 ${res.generated} 条，跳过 ${res.skipped} 条`)
+    notify.success(`生成 ${res.generated} 条，跳过 ${res.skipped} 条`)
     generateVisible.value = false
     loadPlans()
     loadTasks()
@@ -491,13 +510,13 @@ function openRejectTask() {
 
 async function submitRejectTask() {
   if (!rejectReason.value.trim()) {
-    ElMessage.warning('请填写驳回原因')
+    notify.warning('请填写驳回原因')
     return
   }
   submitting.value = true
   try {
     await rejectInspectionTask(current.value.id, { reason: rejectReason.value })
-    ElMessage.success('已驳回')
+    notify.success('已驳回')
     rejectVisible.value = false
     taskVisible.value = false
     loadTasks()
@@ -530,11 +549,11 @@ function openTemplate(row) {
 
 async function submitTemplate() {
   if (!templateForm.templateCode || !templateForm.templateName) {
-    ElMessage.warning('模板编码与名称必填')
+    notify.warning('模板编码与名称必填')
     return
   }
   if (!templatePoints.value.length || templatePoints.value.some((p) => !p.pointName)) {
-    ElMessage.warning('请填写完整的点位名称')
+    notify.warning('请填写完整的点位名称')
     return
   }
   submitting.value = true
@@ -543,7 +562,7 @@ async function submitTemplate() {
       ...templateForm,
       points: templatePoints.value.map((p, i) => ({ ...p, sortNo: i + 1 }))
     })
-    ElMessage.success('模板已创建')
+    notify.success('模板已创建')
     templateVisible.value = false
     loadTemplates()
   } finally {

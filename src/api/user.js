@@ -30,6 +30,9 @@ export function getEngineers(params) {
   return request.get('/users/engineers', { params })
 }
 
-export function getGroups() {
-  return request.get('/users/groups')
+// 后端契约：用户组 = 班组 team（GET /api/teams，返回数组），无 /api/users/groups
+export async function getGroups(params) {
+  const data = await request.get('/teams', { params })
+  const list = Array.isArray(data) ? data : data?.list || []
+  return list.map((t) => ({ ...t, name: t.name || t.teamName || t.team_name || `班组${t.id}` }))
 }

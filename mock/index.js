@@ -300,14 +300,13 @@ export default [
     }
   },
   {
-    url: '/api/notifications/broadcast',
-    method: 'get',
-    response: () => ok(broadcasts.slice())
-  },
-  {
     url: '/api/notifications',
     method: 'get',
     response: ({ headers, query }) => {
+      // 广播历史：后端仅有 POST /notifications/broadcast，历史按 type 从通知聚合
+      if (query?.type === 'BROADCAST') {
+        return ok(paginate(broadcasts.slice(), query?.page, query?.pageSize))
+      }
       const user = me(headers)
       let list = notifications.filter((n) => n.userId === user?.id)
       if (query?.unreadOnly === true || query?.unreadOnly === 'true') {
@@ -353,8 +352,7 @@ export default [
   },
 
   // ============ 基础数据 ============
-  { url: '/api/users/groups', method: 'get', response: () => ok(groups.slice()) },
-  { url: '/api/communities', method: 'get', response: () => ok(communities.slice()) },
+  { url: '/api/branches', method: 'get', response: () => ok(communities.slice()) },
   {
     url: '/api/duty-schedules',
     method: 'get',

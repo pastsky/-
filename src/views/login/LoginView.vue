@@ -33,7 +33,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -43,7 +43,7 @@ const form = reactive({ username: '', password: '' })
 
 async function handleLogin() {
   if (!form.username || !form.password) {
-    ElMessage.warning('请输入用户名和密码')
+    notify.warning('请输入用户名和密码')
     return
   }
   loading.value = true

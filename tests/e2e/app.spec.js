@@ -4,6 +4,7 @@ import {
   selectOption,
   confirmBox,
   tableRow,
+  formItem,
   lastMessage,
   TINY_PNG
 } from './helpers'
@@ -19,7 +20,7 @@ test('登录校验与业主登录跳转', async ({ page }) => {
   await expect(page.getByText('物业工单管理平台')).toBeVisible()
 
   await page.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page.locator('.el-message')).toContainText('请输入用户名和密码')
+  await expect(page.locator('[data-sonner-toast]')).toContainText('请输入用户名和密码')
 
   await page.getByPlaceholder('用户名').fill('resident001')
   await page.getByPlaceholder('密码').fill('wrong-pass')
@@ -270,8 +271,8 @@ test('新增模块冒烟：电梯台账、班组、反馈、导出中心', async
   // 电梯台账
   await page.getByRole('menuitem', { name: '电梯台账' }).click()
   await page.waitForURL(/\/elevators$/)
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('JG-A1-01')
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('超期')
+  await expect(page.locator('.el-table__body-wrapper:visible')).toContainText('JG-A1-01')
+  await expect(page.locator('.el-table__body-wrapper:visible')).toContainText('超期')
 
   // 班组 + 审计日志
   await page.getByRole('menuitem', { name: '班组管理' }).click()
@@ -283,13 +284,12 @@ test('新增模块冒烟：电梯台账、班组、反馈、导出中心', async
   // 反馈工单
   await page.getByRole('menuitem', { name: '反馈工单' }).click()
   await page.waitForURL(/\/feedback$/)
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('楼道还有残留水渍')
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('待处理')
+  await expect(tableRow(page, '楼道还有残留水渍')).toContainText('待处理')
 
   // 导出中心
   await page.getByRole('menuitem', { name: '导出中心' }).click()
   await page.waitForURL(/\/exports$/)
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('EXP202610300001')
+  await expect(page.locator('.el-table__body-wrapper:visible')).toContainText('EXP202610300001')
   await page.getByRole('button', { name: '提交导出' }).click()
   await expect(lastMessage(page)).toContainText('导出任务已提交')
 })
@@ -382,6 +382,47 @@ test('证书审核 / 巡检 / 维保模块', async ({ page }) => {
   await rejectDialog.getByPlaceholder('如：异常点位缺少现场照片').fill('请补充异常点位照片')
   await rejectDialog.getByRole('button', { name: '确定驳回' }).click()
   await expect(lastMessage(page)).toContainText('已驳回')
+})
+
+test('报修表单：zod schema 拦截空标题并定位字段错误', async ({ page }) => {
+  await loginAs(page, 'resident')
+  await page.goto('/work-orders/create')
+  await page.getByRole('button', { name: '保存' }).click()
+
+  await expect(lastMessage(page, 'warning')).toContainText('请输入工单标题')
+  await expect(formItem(page, '标题').locator('.el-form-item__error')).toContainText('请输入工单标题')
+  await expect(page).toHaveURL(/\/work-orders\/create$/)
+
+  await formItem(page, '标题').locator('input').fill('厨房水管漏水')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(formItem(page, '类型').locator('.el-form-item__error')).toContainText('请选择工单类型')
+  await expect(formItem(page, '标题').locator('.el-form-item__error')).toHaveCount(0)
+})
+
+test('列表加载失败展示错误占位并可重试', async ({ page }) => {
+  await loginAs(page, 'admin')
+
+  let blocked = true
+  await page.route('**/api/work-orders?*', async (route) => {
+    if (blocked) {
+      blocked = false
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 5000, message: '服务异常' })
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.goto('/work-orders')
+  await expect(page.locator('.list-error')).toBeVisible()
+  await expect(page.locator('.list-error')).toContainText('数据加载失败')
+
+  await page.getByRole('button', { name: '重新加载' }).click()
+  await expect(page.locator('.list-error')).toBeHidden()
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toBeVisible()
 })
 
 test('全页面巡检：无运行时报错', async ({ page }) => {

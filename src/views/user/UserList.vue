@@ -25,7 +25,8 @@
       <span class="sub">停用为逻辑删除：保留历史工单归属，停用后不可登录、不可被指派</span>
     </div>
 
-    <el-table v-loading="loading" :data="list">
+    <ListError :failed="loadError" :loading="loading" @retry="loadData" />
+    <el-table v-if="!loadError" v-loading="loading" :data="list">
       <el-table-column prop="username" label="用户名" width="125" />
       <el-table-column prop="realName" label="姓名" width="110" />
       <el-table-column label="角色" width="120">
@@ -78,17 +79,17 @@
     />
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="520px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
-        <el-form-item label="用户名" prop="username">
+      <el-form :model="form" label-width="80px">
+        <el-form-item label="用户名" :error="errors.username">
           <el-input v-model="form.username" placeholder="登录账号" />
         </el-form-item>
-        <el-form-item v-if="!isEdit" label="密码" prop="password">
+        <el-form-item v-if="!isEdit" label="密码" :error="errors.password">
           <el-input v-model="form.password" placeholder="初始密码" />
         </el-form-item>
-        <el-form-item label="姓名" prop="realName">
+        <el-form-item label="姓名" :error="errors.realName">
           <el-input v-model="form.realName" placeholder="真实姓名" />
         </el-form-item>
-        <el-form-item label="手机号">
+        <el-form-item label="手机号" :error="errors.phone">
           <el-input v-model="form.phone" />
         </el-form-item>
         <el-form-item label="邮箱">
@@ -105,7 +106,7 @@
             <el-input v-model="form.room" placeholder="房号" />
           </div>
         </el-form-item>
-        <el-form-item label="角色" prop="role">
+        <el-form-item label="角色" :error="errors.role">
           <el-select v-model="form.role" style="width: 100%">
             <el-option v-for="o in ROLE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
@@ -141,7 +142,10 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
+import { useZodForm } from '@/utils/useZodForm'
+import { buildUserSchema } from '@/schemas/user'
 import {
   getUserList,
   createUser,
@@ -152,6 +156,7 @@ import {
   getGroups
 } from '@/api/user'
 import { getCommunities } from '@/api/basedata'
+import ListError from '@/components/ListError.vue'
 import {
   ROLE_MAP,
   ROLE_OPTIONS,
@@ -162,6 +167,7 @@ import {
 } from '@/utils/dict'
 
 const loading = ref(false)
+const loadError = ref(false)
 const submitting = ref(false)
 const list = ref([])
 const total = ref(0)
@@ -175,7 +181,9 @@ const isEdit = ref(false)
 const editId = ref(null)
 const resetId = ref(null)
 const newPassword = ref('')
-const formRef = ref()
+const { errors, validate, clear } = useZodForm(() =>
+  buildUserSchema({ requirePassword: !isEdit.value })
+)
 const form = reactive({
   username: '',
   password: '',
@@ -191,13 +199,6 @@ const form = reactive({
 })
 
 const isRepairerRole = computed(() => REPAIRER_ROLES.includes(form.role))
-
-const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
-}
 
 const groupList = groups
 
@@ -217,10 +218,13 @@ function buildParams() {
 
 async function loadData() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getUserList(buildParams())
     list.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -259,12 +263,14 @@ function openCreate() {
   isEdit.value = false
   editId.value = null
   resetForm()
+  clear()
   dialogVisible.value = true
 }
 
 function openEdit(row) {
   isEdit.value = true
   editId.value = row.id
+  clear()
   Object.assign(form, {
     username: row.username,
     password: '',
@@ -282,7 +288,7 @@ function openEdit(row) {
 }
 
 async function handleSubmit() {
-  await formRef.value.validate()
+  if (!validate(form)) return
   const payload = {
     username: form.username,
     realName: form.realName,
@@ -300,10 +306,10 @@ async function handleSubmit() {
   try {
     if (isEdit.value) {
       await updateUser(editId.value, payload)
-      ElMessage.success('保存成功')
+      notify.success('保存成功')
     } else {
       await createUser({ ...payload, password: form.password })
-      ElMessage.success('新增成功')
+      notify.success('新增成功')
     }
     dialogVisible.value = false
     loadData()
@@ -320,11 +326,11 @@ function openReset(row) {
 
 async function submitReset() {
   if (!newPassword.value) {
-    ElMessage.warning('请输入新密码')
+    notify.warning('请输入新密码')
     return
   }
   await resetPassword(resetId.value, { password: newPassword.value })
-  ElMessage.success('密码已重置')
+  notify.success('密码已重置')
   resetVisible.value = false
 }
 
@@ -335,21 +341,25 @@ async function handleDisable(row) {
     { type: 'warning' }
   )
   await disableUser(row.id)
-  ElMessage.success('已停用')
+  notify.success('已停用')
   loadData()
 }
 
 async function handleEnable(row) {
   await enableUser(row.id)
-  ElMessage.success('已恢复')
+  notify.success('已恢复')
   loadData()
 }
 
 onMounted(async () => {
-  const [gs, cs] = await Promise.all([getGroups(), getCommunities()])
+  // 字典与主列表解耦：班组/小区接口失败不影响用户列表
+  loadData()
+  const [gs, cs] = await Promise.all([
+    getGroups().catch(() => []),
+    getCommunities().catch(() => [])
+  ])
   groups.value = gs
   communities.value = cs
-  loadData()
 })
 </script>
 

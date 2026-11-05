@@ -17,6 +17,7 @@ export function broadcastNotification(data) {
   return request.post('/notifications/broadcast', data)
 }
 
-export function getBroadcastList() {
-  return request.get('/notifications/broadcast')
+// 后端仅有 POST /notifications/broadcast；历史记录走通知列表按 type=BROADCAST 过滤
+export function getBroadcastList(params) {
+  return request.get('/notifications', { params: { page: 1, pageSize: 50, type: 'BROADCAST', ...params } })
 }

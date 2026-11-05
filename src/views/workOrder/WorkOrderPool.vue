@@ -31,7 +31,8 @@
       </div>
     </div>
 
-    <el-table v-loading="loading" :data="list" @row-click="goDetail">
+    <ListError :failed="loadError" :loading="loading" @retry="loadData" />
+    <el-table v-if="!loadError" v-loading="loading" :data="list" @row-click="goDetail">
       <el-table-column type="expand">
         <template #default="{ row }">
           <div class="expand">
@@ -103,8 +104,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { getWorkOrderPool, grabWorkOrder } from '@/api/workOrder'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_TYPE_MAP,
@@ -120,6 +123,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
+const loadError = ref(false)
 const list = ref([])
 const total = ref(0)
 const showAll = ref(true)
@@ -130,6 +134,7 @@ const canGrab = computed(() => REPAIRER_ROLES.includes(userStore.role))
 
 async function loadData() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getWorkOrderPool({
       page: query.page,
@@ -140,6 +145,8 @@ async function loadData() {
     })
     list.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -162,7 +169,7 @@ async function handleGrab(row) {
   try {
     // 契约：抢单成功 PENDING + pool_flag=1 -> PROCESSING，并写入 accept_time
     await grabWorkOrder(row.id)
-    ElMessage.success('抢单成功，工单已进入处理中')
+    notify.success('抢单成功，工单已进入处理中')
     loadData()
   } catch (e) {
     // 失败原因（1002 无权限/收工，3000 已被抢/在途/预约冲突）由请求拦截器统一提示

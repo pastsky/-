@@ -60,7 +60,8 @@
           </div>
         </div>
       </template>
-      <el-table v-loading="loading" :data="list">
+      <ListError :failed="loadError" :loading="loading" @retry="loadList" />
+      <el-table v-if="!loadError" v-loading="loading" :data="list">
         <el-table-column prop="jobNo" label="任务号" width="170" />
         <el-table-column label="报表" width="150">
           <template #default="{ row }">{{ REPORT_TYPE_MAP[row.reportType] || row.reportType }}</template>
@@ -114,8 +115,9 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { createExportJob, getExportList, downloadExport } from '@/api/export'
+import ListError from '@/components/ListError.vue'
 import {
   REPORT_TYPE_MAP,
   REPORT_TYPE_OPTIONS,
@@ -127,6 +129,7 @@ import {
 
 const creating = ref(false)
 const loading = ref(false)
+const loadError = ref(false)
 const list = ref([])
 const total = ref(0)
 const dateRange = ref([])
@@ -160,6 +163,7 @@ function formatSize(size) {
 
 async function loadList() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getExportList({
       status: query.status || undefined,
@@ -176,6 +180,8 @@ async function loadList() {
         loadList()
       }, 3000)
     }
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -190,7 +196,7 @@ async function handleCreate() {
       startDate: dateRange.value?.[0] || undefined,
       endDate: dateRange.value?.[1] || undefined
     })
-    ElMessage.success(`导出任务已提交（${job.jobNo}）`)
+    notify.success(`导出任务已提交（${job.jobNo}）`)
     await loadList()
   } finally {
     creating.value = false

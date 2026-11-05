@@ -44,7 +44,8 @@
     <el-col :span="14">
       <el-card>
         <template #header>已发布记录</template>
-        <el-table v-loading="loading" :data="history">
+        <ListError :failed="loadError" :loading="loading" @retry="loadHistory" />
+        <el-table v-if="!loadError" v-loading="loading" :data="history">
           <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip />
           <el-table-column label="范围" width="120">
             <template #default="{ row }">
@@ -68,9 +69,10 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { broadcastNotification, getBroadcastList } from '@/api/notification'
 import { getCommunities } from '@/api/basedata'
+import ListError from '@/components/ListError.vue'
 import {
   ROLE_MAP,
   ROLE_OPTIONS,
@@ -82,6 +84,7 @@ import {
 const formRef = ref()
 const submitting = ref(false)
 const loading = ref(false)
+const loadError = ref(false)
 const history = ref([])
 const communities = ref([])
 
@@ -107,8 +110,12 @@ function communityName(id) {
 
 async function loadHistory() {
   loading.value = true
+  loadError.value = false
   try {
-    history.value = await getBroadcastList()
+    const data = await getBroadcastList()
+    history.value = Array.isArray(data) ? data : data?.list || []
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -126,7 +133,7 @@ async function handleSubmit() {
       branchId: form.targetScope === 'BRANCH' ? form.branchId : undefined,
       type: form.type
     })
-    ElMessage.success(`发布成功，送达 ${data.delivered} 人`)
+    notify.success(`发布成功，送达 ${data.delivered} 人`)
     resetForm()
     loadHistory()
   } finally {
@@ -144,8 +151,13 @@ function resetForm() {
 }
 
 onMounted(async () => {
-  const [cs] = await Promise.all([getCommunities(), loadHistory()])
-  communities.value = cs
+  // 字典加载失败不得阻断历史列表
+  loadHistory()
+  try {
+    communities.value = await getCommunities()
+  } catch (e) {
+    communities.value = []
+  }
 })
 </script>
 

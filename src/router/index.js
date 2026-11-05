@@ -28,19 +28,19 @@ const routes = [
         path: 'work-orders/create',
         name: 'WorkOrderCreate',
         component: () => import('@/views/workOrder/WorkOrderEdit.vue'),
-        meta: { roles: ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'] }
+        meta: { roles: ['RESIDENT'] }
       },
       {
         path: 'work-orders/pool',
         name: 'WorkOrderPool',
         component: () => import('@/views/workOrder/WorkOrderPool.vue'),
-        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER'] }
       },
       {
         path: 'work-orders/:id/edit',
         name: 'WorkOrderEdit',
         component: () => import('@/views/workOrder/WorkOrderEdit.vue'),
-        meta: { roles: ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'] }
+        meta: { roles: ['RESIDENT', 'ADMIN'] }
       },
       {
         path: 'work-orders/:id',
@@ -51,37 +51,46 @@ const routes = [
         path: 'calendar',
         name: 'RepairerCalendar',
         component: () => import('@/views/calendar/RepairerCalendar.vue'),
-        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'elevators',
         name: 'ElevatorList',
         component: () => import('@/views/elevator/ElevatorList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'ENGINEER', 'VENDOR_ENGINEER'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER'] }
       },
       {
         path: 'maintenance',
         name: 'MaintenanceList',
         component: () => import('@/views/maintenance/MaintenanceList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'inspection',
         name: 'InspectionList',
         component: () => import('@/views/inspection/InspectionList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'certificates',
         name: 'CertificateList',
         component: () => import('@/views/certificate/CertificateList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'teams',
         name: 'TeamList',
         component: () => import('@/views/team/TeamList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
+        meta: {
+          roles: [
+            'ADMIN',
+            'CUSTOMER_SERVICE',
+            'ENGINEER',
+            'VENDOR_ENGINEER',
+            'BRANCH_ADMIN',
+            'VENDOR_ADMIN'
+          ]
+        }
       },
       {
         path: 'feedback',
@@ -99,7 +108,7 @@ const routes = [
         path: 'users',
         name: 'UserList',
         component: () => import('@/views/user/UserList.vue'),
-        meta: { roles: ['ADMIN', 'BRANCH_ADMIN'] }
+        meta: { roles: ['ADMIN'] }
       },
       {
         path: 'stats',

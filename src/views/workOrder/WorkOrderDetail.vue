@@ -453,7 +453,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { Plus } from '@element-plus/icons-vue'
 import {
   getWorkOrderDetail,
@@ -534,16 +535,16 @@ const forceFiles = ref([])
 
 const role = computed(() => userStore.role)
 const status = computed(() => detail.value.status)
-const isStaff = computed(() =>
-  ['CUSTOMER_SERVICE', 'ADMIN', 'BRANCH_ADMIN'].includes(role.value)
-)
+// 调度类动作（派单/入池/关闭/回访/驳回/督办/内部备注）后端仅 CS、ADMIN
+const isStaff = computed(() => ['CUSTOMER_SERVICE', 'ADMIN'].includes(role.value))
 const isRepairer = computed(() => REPAIRER_ROLES.includes(role.value))
 const isAssignee = computed(() => detail.value.assignee?.id === userStore.currentUser?.id)
 const isReporter = computed(() => detail.value.reporter?.id === userStore.currentUser?.id)
 const archived = computed(() => ['CLOSED', 'CANCELED', 'ESCALATED_FINAL'].includes(status.value))
 
+// 后端 PUT /work-orders/{id} 仅 RESIDENT、ADMIN
 const canEdit = computed(
-  () => ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'].includes(role.value) && status.value === 'PENDING'
+  () => ['RESIDENT', 'ADMIN'].includes(role.value) && status.value === 'PENDING'
 )
 const canAssign = computed(() => isStaff.value && status.value === 'PENDING')
 const canPushPool = computed(() => isStaff.value && ['PENDING', 'ASSIGNED'].includes(status.value))
@@ -650,14 +651,14 @@ function onEngineerChange(row) {
 async function submitAssign() {
   if (assignForm.toPool) {
     if (!assignForm.remark) {
-      ElMessage.warning('入池需填写说明')
+      notify.warning('入池需填写说明')
       return
     }
     submitting.value = true
     try {
       await toPool(id, { reason: assignForm.remark })
       assignVisible.value = false
-      ElMessage.success('已推入待抢单池')
+      notify.success('已推入待抢单池')
       loadDetail()
     } finally {
       submitting.value = false
@@ -665,7 +666,7 @@ async function submitAssign() {
     return
   }
   if (!assignForm.assigneeId) {
-    ElMessage.warning('请选择维修工')
+    notify.warning('请选择维修工')
     return
   }
   submitting.value = true
@@ -676,7 +677,7 @@ async function submitAssign() {
       priority: assignForm.priority || undefined
     })
     assignVisible.value = false
-    ElMessage.success('派单成功')
+    notify.success('派单成功')
     loadDetail()
   } finally {
     submitting.value = false
@@ -690,7 +691,7 @@ async function handlePushPool() {
     inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
   await toPool(id, { reason: value })
-  ElMessage.success('已推入待抢单池')
+  notify.success('已推入待抢单池')
   loadDetail()
 }
 
@@ -704,7 +705,7 @@ async function submitReturn() {
   try {
     await returnWorkOrder(id, { remark: returnForm.remark })
     returnVisible.value = false
-    ElMessage.success('已退回待派单')
+    notify.success('已退回待派单')
     loadDetail()
   } finally {
     submitting.value = false
@@ -720,18 +721,18 @@ async function openTransfer() {
 
 async function submitTransfer() {
   if (!transferForm.targetAssigneeId) {
-    ElMessage.warning('请选择目标维修工')
+    notify.warning('请选择目标维修工')
     return
   }
   if (!transferForm.reason) {
-    ElMessage.warning('请填写转交原因')
+    notify.warning('请填写转交原因')
     return
   }
   submitting.value = true
   try {
     await transferWorkOrder(id, transferForm)
     transferVisible.value = false
-    ElMessage.success('已转交，待对方接单')
+    notify.success('已转交，待对方接单')
     loadDetail()
   } finally {
     submitting.value = false
@@ -741,7 +742,7 @@ async function submitTransfer() {
 async function handleAccept() {
   await ElMessageBox.confirm('确认接单？', '接单')
   await acceptWorkOrder(id, {})
-  ElMessage.success('已接单')
+  notify.success('已接单')
   loadDetail()
 }
 
@@ -764,14 +765,14 @@ async function handleUpload(options) {
 async function submitComplete() {
   const images = completeFiles.value.filter((f) => f.url).map((f) => f.url)
   if (!images.length) {
-    ElMessage.warning('完工需至少上传 1 张现场照片')
+    notify.warning('完工需至少上传 1 张现场照片')
     return
   }
   submitting.value = true
   try {
     await completeWorkOrder(id, { remark: completeForm.remark, images })
     completeVisible.value = false
-    ElMessage.success('已完工，待回访')
+    notify.success('已完工，待回访')
     loadDetail()
   } finally {
     submitting.value = false
@@ -786,14 +787,14 @@ function openReject() {
 
 async function submitReject() {
   if (!rejectForm.reason) {
-    ElMessage.warning('请填写驳回原因')
+    notify.warning('请填写驳回原因')
     return
   }
   submitting.value = true
   try {
     await rejectWorkOrder(id, rejectForm)
     rejectVisible.value = false
-    ElMessage.success('已驳回，返回处理中')
+    notify.success('已驳回，返回处理中')
     loadDetail()
   } finally {
     submitting.value = false
@@ -811,7 +812,7 @@ async function submitReview() {
   try {
     await reviewWorkOrder(id, reviewForm)
     reviewVisible.value = false
-    ElMessage.success(reviewForm.result === 'SATISFIED' ? '回访完成，已归档' : '已退回返工')
+    notify.success(reviewForm.result === 'SATISFIED' ? '回访完成，已归档' : '已退回返工')
     loadDetail()
   } finally {
     submitting.value = false
@@ -827,14 +828,14 @@ function openAudit() {
 
 async function submitAudit() {
   if (!auditForm.approved && (!auditForm.newTime || !auditForm.reason)) {
-    ElMessage.warning('改约需填写新时间与原因')
+    notify.warning('改约需填写新时间与原因')
     return
   }
   submitting.value = true
   try {
     await auditAppointment(id, auditForm)
     auditVisible.value = false
-    ElMessage.success('预约处理已提交')
+    notify.success('预约处理已提交')
     loadDetail()
   } finally {
     submitting.value = false
@@ -844,7 +845,7 @@ async function submitAudit() {
 async function handleClose() {
   await ElMessageBox.confirm('确认关闭该工单？', '关闭工单')
   await closeWorkOrder(id, {})
-  ElMessage.success('已关闭')
+  notify.success('已关闭')
   loadDetail()
 }
 
@@ -855,7 +856,7 @@ async function handleCancel() {
     inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
   })
   await cancelWorkOrder(id, { reason: value, remark: value })
-  ElMessage.success('已取消')
+  notify.success('已取消')
   loadDetail()
 }
 
@@ -867,14 +868,14 @@ function openRate() {
 
 async function submitRate() {
   if (!rateForm.rating) {
-    ElMessage.warning('请选择评分')
+    notify.warning('请选择评分')
     return
   }
   submitting.value = true
   try {
     await rateWorkOrder(id, { rating: rateForm.rating, comment: rateForm.comment })
     rateVisible.value = false
-    ElMessage.success('评价成功')
+    notify.success('评价成功')
     loadDetail()
   } finally {
     submitting.value = false
@@ -889,7 +890,7 @@ function openRemark() {
 
 async function submitRemark() {
   if (!remarkForm.content) {
-    ElMessage.warning('请输入备注内容')
+    notify.warning('请输入备注内容')
     return
   }
   const images = remarkFiles.value.filter((f) => f.url).map((f) => f.url)
@@ -897,7 +898,7 @@ async function submitRemark() {
   try {
     await addInternalNote(id, { remark: remarkForm.content, images })
     remarkVisible.value = false
-    ElMessage.success('备注已保存')
+    notify.success('备注已保存')
     loadDetail()
   } finally {
     submitting.value = false
@@ -915,20 +916,20 @@ async function openForce() {
 
 async function submitForce() {
   if (!forceForm.targetStatus) {
-    ElMessage.warning('请选择目标状态')
+    notify.warning('请选择目标状态')
     return
   }
   if (!forceForm.reason) {
-    ElMessage.warning('请填写改单原因')
+    notify.warning('请填写改单原因')
     return
   }
   if (forceForm.targetStatus === 'ASSIGNED' && !forceForm.assigneeId) {
-    ElMessage.warning('改派需选择目标维修工')
+    notify.warning('改派需选择目标维修工')
     return
   }
   const finishImages = forceFiles.value.filter((f) => f.url).map((f) => f.url)
   if (forceForm.targetStatus === 'COMPLETED' && !finishImages.length) {
-    ElMessage.warning('补录完工需至少 1 张现场照片')
+    notify.warning('补录完工需至少 1 张现场照片')
     return
   }
   submitting.value = true
@@ -940,7 +941,7 @@ async function submitForce() {
       reason: forceForm.reason
     })
     forceVisible.value = false
-    ElMessage.success('改单成功')
+    notify.success('改单成功')
     loadDetail()
   } finally {
     submitting.value = false

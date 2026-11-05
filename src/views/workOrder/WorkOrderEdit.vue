@@ -2,11 +2,11 @@
   <div>
     <el-page-header class="page-header" :content="isEdit ? '编辑工单' : '新建工单'" @back="$router.back()" />
     <el-card>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" style="max-width: 760px">
-        <el-form-item label="标题" prop="title">
+      <el-form :model="form" label-width="100px" style="max-width: 760px">
+        <el-form-item label="标题" :error="errors.title">
           <el-input v-model="form.title" placeholder="请输入工单标题" />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
+        <el-form-item label="类型" :error="errors.type">
           <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%" @change="onTypeChange">
             <el-option
               v-for="o in WORK_ORDER_TYPE_OPTIONS"
@@ -16,7 +16,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="requireElevator" label="电梯" prop="elevatorId">
+        <el-form-item v-if="requireElevator" label="电梯" :error="errors.elevatorId">
           <el-select v-model="form.elevatorId" placeholder="请选择电梯档案" style="width: 100%">
             <el-option
               v-for="e in elevators"
@@ -28,7 +28,7 @@
           </el-select>
           <div class="sub">电梯类工单必须选择电梯档案；检修中/停用电梯不可报修</div>
         </el-form-item>
-        <el-form-item label="优先级" prop="priority">
+        <el-form-item label="优先级" :error="errors.priority">
           <el-select v-model="form.priority" style="width: 100%">
             <el-option
               v-for="o in priorityOptions"
@@ -38,12 +38,12 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="小区">
+        <el-form-item label="小区" :error="errors.communityId">
           <el-select v-model="form.communityId" style="width: 100%">
             <el-option v-for="c in communities" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="报修位置">
+        <el-form-item label="报修位置" :error="errors.building || errors.room">
           <div class="inline">
             <el-input v-model="form.building" placeholder="楼栋，如 3栋" />
             <el-input v-model="form.room" placeholder="房号，如 2单元501" />
@@ -72,7 +72,7 @@
           </div>
           <div class="sub">留空表示「尽快处理」；按 30 分钟粒度；无值班人员的日期不可选</div>
         </el-form-item>
-        <el-form-item label="问题描述">
+        <el-form-item label="问题描述" :error="errors.description">
           <el-input v-model="form.description" type="textarea" :rows="4" placeholder="请描述问题" />
         </el-form-item>
         <el-form-item label="故障图片">
@@ -100,11 +100,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { Plus } from '@element-plus/icons-vue'
 import { createWorkOrder, updateWorkOrder, getWorkOrderDetail } from '@/api/workOrder'
 import { uploadImage, compressImage } from '@/api/file'
 import { getCommunities, getElevators, getDutySchedules } from '@/api/basedata'
+import { workOrderSchema } from '@/schemas/workOrder'
+import { useZodForm } from '@/utils/useZodForm'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_TYPE_OPTIONS,
@@ -117,8 +119,8 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const isEdit = computed(() => !!route.params.id)
-const formRef = ref()
 const submitting = ref(false)
+const { errors, validate } = useZodForm(workOrderSchema)
 const fileList = ref([])
 const communities = ref([])
 const elevators = ref([])
@@ -129,18 +131,12 @@ const form = reactive({
   title: '',
   type: '',
   priority: 'MEDIUM',
-  communityId: 1,
+  communityId: null,
   building: '',
   room: '',
   elevatorId: null,
   description: ''
 })
-
-const rules = {
-  title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  elevatorId: [{ required: true, message: '电梯类工单必须选择电梯', trigger: 'change' }]
-}
 
 const priorityOptions = computed(() => {
   if (userStore.role === 'RESIDENT') {
@@ -167,21 +163,23 @@ function onTypeChange() {
 }
 
 onMounted(async () => {
+  // 字典加载失败只降级为空，不阻断页面与编辑回填
   const [cs, es, ds] = await Promise.all([
-    getCommunities(),
-    getElevators({ communityId: form.communityId }),
-    getDutySchedules({ month: new Date().toISOString().slice(0, 7) })
+    getCommunities().catch(() => []),
+    getElevators().catch(() => []),
+    getDutySchedules({ month: new Date().toISOString().slice(0, 7) }).catch(() => [])
   ])
   communities.value = cs
-  elevators.value = es
-  dutyDates.value = ds.map((d) => d.date)
+  elevators.value = Array.isArray(es) ? es : es?.list || []
+  dutyDates.value = (Array.isArray(ds) ? ds : ds?.list || []).map((d) => d.date)
+  if (!isEdit.value && cs.length) form.communityId = cs[0].id
 
   if (isEdit.value) {
     const detail = await getWorkOrderDetail(route.params.id)
     form.title = detail.title
     form.type = detail.type
     form.priority = detail.priority
-    form.communityId = detail.communityId || 1
+    form.communityId = detail.communityId || null
     form.building = detail.building || ''
     form.room = detail.room || ''
     form.elevatorId = detail.elevatorId || null
@@ -221,11 +219,7 @@ function buildAppointment() {
 }
 
 async function handleSubmit() {
-  await formRef.value.validate()
-  if (requireElevator.value && !form.elevatorId) {
-    ElMessage.warning('电梯类工单必须选择电梯档案')
-    return
-  }
+  if (!validate(form)) return
   const location = `${form.building || ''}${form.room || ''}`
   const payload = {
     title: form.title,
@@ -244,11 +238,11 @@ async function handleSubmit() {
   try {
     if (isEdit.value) {
       await updateWorkOrder(route.params.id, payload)
-      ElMessage.success('保存成功')
+      notify.success('保存成功')
       router.push(`/work-orders/${route.params.id}`)
     } else {
       await createWorkOrder(payload)
-      ElMessage.success('创建成功')
+      notify.success('创建成功')
       router.push('/work-orders')
     }
   } finally {

@@ -23,7 +23,8 @@
           </el-form-item>
         </el-form>
 
-        <el-table v-loading="loading" :data="certs">
+        <ListError :failed="loadError" :loading="loading" @retry="loadCerts" />
+        <el-table v-if="!loadError" v-loading="loading" :data="certs">
           <el-table-column prop="engineerName" label="维修工" width="110" />
           <el-table-column label="证书类型" width="140">
             <template #default="{ row }">{{ row.tagName || CERT_TYPE_MAP[row.tagCode] }}</template>
@@ -270,7 +271,8 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import {
   getCertificateList,
   getCertificateDetail,
@@ -285,6 +287,7 @@ import {
   getTypeCertMappings,
   updateTypeCertMapping
 } from '@/api/certificate'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
   CERT_TYPE_MAP,
@@ -301,6 +304,7 @@ const tab = ref('audit')
 const submitting = ref(false)
 
 const loading = ref(false)
+const loadError = ref(false)
 const certs = ref([])
 const total = ref(0)
 const query = reactive({ page: 1, pageSize: 20, status: '', keyword: '' })
@@ -333,6 +337,7 @@ const mappingForm = reactive({ workOrderType: '', requirement: 'NONE', tagCode: 
 
 async function loadCerts() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getCertificateList({
       page: query.page,
@@ -342,6 +347,8 @@ async function loadCerts() {
     })
     certs.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -363,7 +370,7 @@ async function handleApprove() {
   submitting.value = true
   try {
     await approveCertificate(detail.value.id)
-    ElMessage.success('已通过')
+    notify.success('已通过')
     detailVisible.value = false
     loadCerts()
   } finally {
@@ -385,7 +392,7 @@ function openRevoke() {
 
 async function submitReason() {
   if (!reason.value.trim()) {
-    ElMessage.warning('请填写原因')
+    notify.warning('请填写原因')
     return
   }
   submitting.value = true
@@ -395,7 +402,7 @@ async function submitReason() {
     } else {
       await revokeCertificate(detail.value.id, { reason: reason.value })
     }
-    ElMessage.success('操作成功')
+    notify.success('操作成功')
     reasonVisible.value = false
     detailVisible.value = false
     loadCerts()
@@ -408,7 +415,7 @@ async function handleUnlock() {
   submitting.value = true
   try {
     await unlockCertificate(detail.value.id)
-    ElMessage.success('已解锁')
+    notify.success('已解锁')
     detailVisible.value = false
     loadCerts()
   } finally {
@@ -455,14 +462,14 @@ function openTagEdit(row) {
 
 async function submitTag() {
   if (!tagForm.tagCode || !tagForm.tagName) {
-    ElMessage.warning('标签编码与名称必填')
+    notify.warning('标签编码与名称必填')
     return
   }
   submitting.value = true
   try {
     if (tagEdit.value) await updateRepairerTag(tagId.value, tagForm)
     else await createRepairerTag(tagForm)
-    ElMessage.success('保存成功')
+    notify.success('保存成功')
     tagVisible.value = false
     loadTags()
   } finally {
@@ -474,7 +481,7 @@ async function handleTagDelete(row) {
   await ElMessageBox.confirm(`确认删除标签「${row.tagName}」？`, '删除确认', { type: 'warning' })
   try {
     await deleteRepairerTag(row.id)
-    ElMessage.success('已删除')
+    notify.success('已删除')
     loadTags()
   } catch (e) {
     // 3002 被引用由拦截器提示
@@ -501,7 +508,7 @@ function openMapping(row) {
 
 async function submitMapping() {
   if (mappingForm.requirement !== 'NONE' && !mappingForm.tagCode) {
-    ElMessage.warning('请选择证书标签')
+    notify.warning('请选择证书标签')
     return
   }
   submitting.value = true
@@ -510,7 +517,7 @@ async function submitMapping() {
       requirement: mappingForm.requirement,
       tagCode: mappingForm.requirement === 'NONE' ? null : mappingForm.tagCode
     })
-    ElMessage.success('保存成功')
+    notify.success('保存成功')
     mappingVisible.value = false
     loadMappings()
   } finally {

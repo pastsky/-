@@ -68,9 +68,9 @@ export function tableRow(page, text) {
   return page.locator('.el-table__body-wrapper tr').filter({ hasText: text }).first()
 }
 
-// 最近一条成功/错误提示
+// 最近一条提示（sonner toast）
 export function lastMessage(page, type = 'success') {
-  return page.locator(`.el-message--${type}`).last()
+  return page.locator(`[data-sonner-toast][data-type="${type}"]`).last()
 }
 
 // 最小 PNG（1x1），用于完工图片上传

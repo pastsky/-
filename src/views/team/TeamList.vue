@@ -8,7 +8,8 @@
           <span class="sub">维修工只归属一个班组；未入组不影响指派与抢单，统计归「未分组」</span>
         </div>
 
-        <el-table v-loading="teamLoading" :data="teams">
+        <ListError :failed="loadError" :loading="teamLoading" @retry="loadTeams" />
+        <el-table v-if="!loadError" v-loading="teamLoading" :data="teams">
           <el-table-column prop="teamCode" label="班组编码" width="140" />
           <el-table-column prop="teamName" label="班组名称" width="160" />
           <el-table-column prop="memberCount" label="成员数" width="90" />
@@ -153,7 +154,8 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import {
   getTeamList,
   createTeam,
@@ -164,6 +166,7 @@ import {
   getAuditLogs
 } from '@/api/team'
 import { getEngineers } from '@/api/user'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import { TEAM_STATUS_MAP, AUDIT_BIZ_TYPE_MAP, AUDIT_ACTION_MAP } from '@/utils/dict'
 
@@ -172,6 +175,7 @@ const isAdmin = computed(() => userStore.role === 'ADMIN')
 const tab = ref('teams')
 const keyword = ref('')
 const teamLoading = ref(false)
+const loadError = ref(false)
 const teams = ref([])
 
 const formVisible = ref(false)
@@ -198,8 +202,11 @@ const audit = reactive({ page: 1, pageSize: 20, bizType: '', action: '' })
 
 async function loadTeams() {
   teamLoading.value = true
+  loadError.value = false
   try {
     teams.value = await getTeamList({ keyword: keyword.value || undefined })
+  } catch (e) {
+    loadError.value = true
   } finally {
     teamLoading.value = false
   }
@@ -237,7 +244,7 @@ async function submitForm() {
     } else {
       await createTeam(form)
     }
-    ElMessage.success('保存成功')
+    notify.success('保存成功')
     formVisible.value = false
     loadTeams()
   } finally {
@@ -251,7 +258,7 @@ async function handleDelete(row) {
   })
   try {
     await deleteTeam(row.id)
-    ElMessage.success('已删除')
+    notify.success('已删除')
     loadTeams()
   } catch (e) {
     // 3002 等由拦截器提示
@@ -270,7 +277,7 @@ async function submitMembers() {
   submitting.value = true
   try {
     await updateTeamMembers(currentTeam.value.id, memberIds.value)
-    ElMessage.success('成员已更新')
+    notify.success('成员已更新')
     memberVisible.value = false
     loadTeams()
   } finally {

@@ -36,7 +36,8 @@
       <span class="sub">导入模板列：小区编码*、电梯编号、楼栋、单元、位置、品牌、型号、载重、安装日期、状态、备注</span>
     </div>
 
-    <el-table v-loading="loading" :data="list">
+    <ListError :failed="loadError" :loading="loading" @retry="loadData" />
+    <el-table v-if="!loadError" v-loading="loading" :data="list">
       <el-table-column prop="elevatorNo" label="电梯编号" width="150" />
       <el-table-column prop="branchName" label="小区" width="130" show-overflow-tooltip />
       <el-table-column label="位置" min-width="150" show-overflow-tooltip>
@@ -189,7 +190,8 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import {
   getElevatorList,
   createElevator,
@@ -200,6 +202,7 @@ import {
   importElevators
 } from '@/api/elevator'
 import { getCommunities } from '@/api/basedata'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
   ELEVATOR_STATUS_MAP,
@@ -211,6 +214,7 @@ const userStore = useUserStore()
 const isAdmin = computed(() => userStore.role === 'ADMIN')
 
 const loading = ref(false)
+const loadError = ref(false)
 const submitting = ref(false)
 const list = ref([])
 const total = ref(0)
@@ -252,6 +256,7 @@ const current = ref(null)
 
 async function loadData() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getElevatorList({
       page: query.page,
@@ -262,6 +267,8 @@ async function loadData() {
     })
     list.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -324,10 +331,10 @@ async function submitForm() {
   try {
     if (isEdit.value) {
       await updateElevator(editId.value, form)
-      ElMessage.success('保存成功')
+      notify.success('保存成功')
     } else {
       await createElevator(form)
-      ElMessage.success('新增成功')
+      notify.success('新增成功')
     }
     formVisible.value = false
     loadData()
@@ -341,7 +348,7 @@ async function handleDelete(row) {
     type: 'warning'
   })
   await deleteElevator(row.id)
-  ElMessage.success('已删除')
+  notify.success('已删除')
   loadData()
 }
 
@@ -358,14 +365,14 @@ function openInspect(row) {
 
 async function submitInspect() {
   if (!inspectForm.inspectDate || !inspectForm.nextInspectDate) {
-    ElMessage.warning('请填写检验日期与下次检验日期')
+    notify.warning('请填写检验日期与下次检验日期')
     return
   }
   submitting.value = true
   try {
     await inspectElevator(inspectId.value, inspectForm)
     inspectVisible.value = false
-    ElMessage.success('年检登记成功')
+    notify.success('年检登记成功')
     loadData()
   } finally {
     submitting.value = false
@@ -405,7 +412,7 @@ async function handleImport(options) {
         type: 'warning'
       })
     } else {
-      ElMessage.success(`导入成功 ${result.successCount} 条`)
+      notify.success(`导入成功 ${result.successCount} 条`)
     }
     loadData()
   } catch (e) {
@@ -414,8 +421,13 @@ async function handleImport(options) {
 }
 
 onMounted(async () => {
-  communities.value = await getCommunities()
+  // 字典与主列表解耦：小区接口失败不影响台账加载
   loadData()
+  try {
+    communities.value = await getCommunities()
+  } catch (e) {
+    communities.value = []
+  }
 })
 </script>
 

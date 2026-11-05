@@ -20,7 +20,8 @@
       </el-form-item>
     </el-form>
 
-    <el-table v-loading="loading" :data="list">
+    <ListError :failed="loadError" :loading="loading" @retry="loadData" />
+    <el-table v-if="!loadError" v-loading="loading" :data="list">
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="orderNo" label="工单号" width="160" />
       <el-table-column prop="orderTitle" label="工单标题" min-width="160" show-overflow-tooltip />
@@ -40,7 +41,7 @@
       <el-table-column label="操作" width="110" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">
-            {{ row.status === 'SUBMITTED' ? '处理' : '查看' }}
+            {{ row.status === 'SUBMITTED' && canResolve ? '处理' : '查看' }}
           </el-button>
         </template>
       </el-table-column>
@@ -83,7 +84,7 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <el-form v-if="detail.status === 'SUBMITTED'" label-width="80px" class="resolve">
+      <el-form v-if="detail.status === 'SUBMITTED' && canResolve" label-width="80px" class="resolve">
         <el-form-item label="处理说明" required>
           <el-input v-model="resolveRemark" type="textarea" placeholder="说明处理结果，必填" />
         </el-form-item>
@@ -92,7 +93,7 @@
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
         <el-button
-          v-if="detail.status === 'SUBMITTED'"
+          v-if="detail.status === 'SUBMITTED' && canResolve"
           type="primary"
           :loading="submitting"
           @click="handleResolve"
@@ -105,16 +106,23 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { notify } from '@/utils/notify'
 import { getFeedbackList, getFeedbackDetail, resolveFeedback } from '@/api/feedback'
 import {
   FEEDBACK_STATUS_MAP,
   FEEDBACK_STATUS_TAG,
   FEEDBACK_STATUS_OPTIONS
 } from '@/utils/dict'
+import { useUserStore } from '@/stores/user'
+import ListError from '@/components/ListError.vue'
+
+const userStore = useUserStore()
+// 后端 PUT /feedback/{id}/resolve 仅 CUSTOMER_SERVICE、ADMIN
+const canResolve = computed(() => ['CUSTOMER_SERVICE', 'ADMIN'].includes(userStore.role))
 
 const loading = ref(false)
+const loadError = ref(false)
 const submitting = ref(false)
 const list = ref([])
 const total = ref(0)
@@ -126,6 +134,7 @@ const resolveRemark = ref('')
 
 async function loadData() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getFeedbackList({
       page: query.page,
@@ -135,6 +144,8 @@ async function loadData() {
     })
     list.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -160,13 +171,13 @@ async function openDetail(row) {
 
 async function handleResolve() {
   if (!resolveRemark.value.trim()) {
-    ElMessage.warning('请填写处理说明')
+    notify.warning('请填写处理说明')
     return
   }
   submitting.value = true
   try {
     await resolveFeedback(detail.value.id, { resolveRemark: resolveRemark.value })
-    ElMessage.success('已标记处理')
+    notify.success('已标记处理')
     detailVisible.value = false
     loadData()
   } finally {

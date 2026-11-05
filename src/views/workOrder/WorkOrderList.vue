@@ -69,7 +69,10 @@
       <span v-if="query.overdue" class="hint">仅显示处理超时工单</span>
     </div>
 
+    <ListError :failed="loadError" :loading="loading" @retry="loadData" />
+
     <el-table
+      v-if="!loadError"
       v-loading="loading"
       :data="list"
       class="table"
@@ -138,8 +141,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { getWorkOrderList, batchToPool, batchCancel } from '@/api/workOrder'
+import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
   WORK_ORDER_STATUS_OPTIONS,
@@ -159,6 +164,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
+const loadError = ref(false)
 const list = ref([])
 const total = ref(0)
 const selection = ref([])
@@ -175,10 +181,10 @@ const query = reactive({
   overdue: false
 })
 
-const canCreate = computed(() => ['RESIDENT', 'ADMIN', 'CUSTOMER_SERVICE'].includes(userStore.role))
-const canBatch = computed(() =>
-  ['CUSTOMER_SERVICE', 'ADMIN', 'BRANCH_ADMIN'].includes(userStore.role)
-)
+// 后端 POST /work-orders 仅 RESIDENT
+const canCreate = computed(() => userStore.role === 'RESIDENT')
+// 批量指派/入池/取消仅 CUSTOMER_SERVICE、ADMIN
+const canBatch = computed(() => ['CUSTOMER_SERVICE', 'ADMIN'].includes(userStore.role))
 
 function rowClass({ row }) {
   if (row.priority === 'URGENT' && !['CLOSED', 'CANCELED'].includes(row.status)) return 'urgent-row'
@@ -203,10 +209,13 @@ function buildParams() {
 
 async function loadData() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getWorkOrderList(buildParams())
     list.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -279,7 +288,7 @@ async function handleBatch(action) {
       { type: 'warning' }
     )
   }
-  ElMessage.success(`成功 ${result.successCount} 条`)
+  notify.success(`成功 ${result.successCount} 条`)
   loadData()
 }
 

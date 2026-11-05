@@ -30,7 +30,12 @@
         </div>
       </el-header>
       <el-main class="main">
-        <router-view />
+        <!-- 统一路由过渡：仅在此处声明，各业务页不再散落 transition -->
+        <router-view v-slot="{ Component, route }">
+          <Transition name="page-fade" mode="out-in">
+            <component :is="Component" :key="route.path" />
+          </Transition>
+        </router-view>
       </el-main>
     </el-container>
   </el-container>
@@ -85,17 +90,17 @@ const notifyLoading = ref(false)
 const notifyFilter = ref('all')
 
 const allMenus = [
-  { path: '/dispatch', title: '客服工作台', icon: 'Odometer', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
+  { path: '/dispatch', title: '客服工作台', icon: 'Odometer', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/work-orders', title: '工单管理', icon: 'List', roles: [] },
-  { path: '/work-orders/pool', title: '工单池', icon: 'Box', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/calendar', title: '维修日历', icon: 'Calendar', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/elevators', title: '电梯台账', icon: 'OfficeBuilding', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/maintenance', title: '维保计划', icon: 'Tools', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/inspection', title: '巡检管理', icon: 'Aim', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/certificates', title: '证书审核', icon: 'Medal', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
+  { path: '/work-orders/pool', title: '工单池', icon: 'Box', roles: ['ENGINEER', 'VENDOR_ENGINEER'] },
+  { path: '/calendar', title: '维修日历', icon: 'Calendar', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/elevators', title: '电梯台账', icon: 'OfficeBuilding', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER'] },
+  { path: '/maintenance', title: '维保计划', icon: 'Tools', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/inspection', title: '巡检管理', icon: 'Aim', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/certificates', title: '证书审核', icon: 'Medal', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/feedback', title: '反馈工单', icon: 'ChatDotRound', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
-  { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN', 'BRANCH_ADMIN'] },
+  { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN'] },
   { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/exports', title: '导出中心', icon: 'Download', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/broadcast', title: '广播中心', icon: 'Promotion', roles: ['ADMIN', 'CUSTOMER_SERVICE'] }

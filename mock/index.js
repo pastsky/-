@@ -303,8 +303,9 @@ export default [
     url: '/api/notifications',
     method: 'get',
     response: ({ headers, query }) => {
-      // 广播历史：后端仅有 POST /notifications/broadcast，历史按 type 从通知聚合
-      if (query?.type === 'BROADCAST') {
+      // 广播历史：后端仅有 POST /notifications/broadcast，历史按类型从通知聚合；
+      // 类型枚举不接受 BROADCAST，广播类记录随 ANNOUNCEMENT 一并返回
+      if (query?.type === 'ANNOUNCEMENT' || query?.type === 'BROADCAST') {
         return ok(paginate(broadcasts.slice(), query?.page, query?.pageSize))
       }
       const user = me(headers)

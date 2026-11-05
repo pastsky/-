@@ -16,7 +16,7 @@ defineProps({
   failed: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   title: { type: String, default: '数据加载失败' },
-  description: { type: String, default: '请确认后端服务已启动，或稍后重试' }
+  description: { type: String, default: '请稍后重试；若持续失败请联系管理员' }
 })
 
 defineEmits(['retry'])

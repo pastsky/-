@@ -1,5 +1,10 @@
 <template>
-  <el-card>
+  <!-- 维修工：卡片式我的工单（首屏即待办） -->
+  <EngineerTaskList v-if="isEngineer" />
+  <!-- 业主：报修主入口 + 进度卡片 -->
+  <ResidentOrderList v-else-if="isResident" />
+
+  <el-card v-else>
     <el-form :inline="true" :model="query" class="filter">
       <el-form-item label="状态">
         <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px">
@@ -145,8 +150,11 @@ import { ElMessageBox } from 'element-plus'
 import { notify } from '@/utils/notify'
 import { getWorkOrderList, batchToPool, batchCancel } from '@/api/workOrder'
 import ListError from '@/components/ListError.vue'
+import EngineerTaskList from '@/components/workOrder/EngineerTaskList.vue'
+import ResidentOrderList from '@/components/workOrder/ResidentOrderList.vue'
 import { useUserStore } from '@/stores/user'
 import {
+  REPAIRER_ROLES,
   WORK_ORDER_STATUS_OPTIONS,
   WORK_ORDER_STATUS_MAP,
   WORK_ORDER_STATUS_TAG,
@@ -185,6 +193,9 @@ const query = reactive({
 const canCreate = computed(() => userStore.role === 'RESIDENT')
 // 批量指派/入池/取消仅 CUSTOMER_SERVICE、ADMIN
 const canBatch = computed(() => ['CUSTOMER_SERVICE', 'ADMIN'].includes(userStore.role))
+// 维修工 / 业主走卡片视图，管理端保持宽表
+const isEngineer = computed(() => REPAIRER_ROLES.includes(userStore.role))
+const isResident = computed(() => userStore.role === 'RESIDENT')
 
 function rowClass({ row }) {
   if (row.priority === 'URGENT' && !['CLOSED', 'CANCELED'].includes(row.status)) return 'urgent-row'
@@ -208,6 +219,8 @@ function buildParams() {
 }
 
 async function loadData() {
+  // 维修工 / 业主由独立卡片组件自行取数，避免重复请求
+  if (isEngineer.value || isResident.value) return
   loading.value = true
   loadError.value = false
   try {

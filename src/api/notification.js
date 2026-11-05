@@ -17,7 +17,10 @@ export function broadcastNotification(data) {
   return request.post('/notifications/broadcast', data)
 }
 
-// 后端仅有 POST /notifications/broadcast；历史记录走通知列表按 type=BROADCAST 过滤
+// 后端通知类型枚举无 BROADCAST（传 BROADCAST 会 400），广播历史按 ANNOUNCEMENT 查询；
+// 结果再在前端按广播类类型过滤（见 BroadcastCenter）
 export function getBroadcastList(params) {
-  return request.get('/notifications', { params: { page: 1, pageSize: 50, type: 'BROADCAST', ...params } })
+  return request.get('/notifications', {
+    params: { page: 1, pageSize: 50, type: 'ANNOUNCEMENT', ...params }
+  })
 }

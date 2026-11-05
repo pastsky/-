@@ -33,7 +33,7 @@
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="审计日志" name="audit">
+      <el-tab-pane v-if="isAdmin" label="审计日志" name="audit">
         <el-form :inline="true" class="filter">
           <el-form-item label="业务类型">
             <el-select v-model="audit.bizType" clearable placeholder="全部" style="width: 130px">
@@ -204,9 +204,12 @@ async function loadTeams() {
   teamLoading.value = true
   loadError.value = false
   try {
-    teams.value = await getTeamList({ keyword: keyword.value || undefined })
+    const data = await getTeamList({ keyword: keyword.value || undefined })
+    // 后端可能返回数组或分页对象，统一归一化为数组
+    teams.value = Array.isArray(data) ? data : data?.list || []
   } catch (e) {
     loadError.value = true
+    teams.value = []
   } finally {
     teamLoading.value = false
   }
@@ -305,7 +308,8 @@ async function loadAudit() {
 
 onMounted(async () => {
   loadTeams()
-  loadAudit()
+  // 审计日志仅 ADMIN 可读，其他角色请求会 403
+  if (isAdmin.value) loadAudit()
 })
 </script>
 

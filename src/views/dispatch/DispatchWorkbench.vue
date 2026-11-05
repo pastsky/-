@@ -78,6 +78,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getWorkbenchTodos, getWorkbenchOverdue } from '@/api/workbench'
+import { notify } from '@/utils/notify'
 import {
   WORK_ORDER_STATUS_MAP,
   WORK_ORDER_STATUS_TAG,
@@ -127,7 +128,16 @@ function goCard(card) {
 }
 
 function openRow(row) {
-  if (row.bizType === 'WORK_ORDER') router.push(`/work-orders/${row.bizId}`)
+  // 按业务类型分流到对应详情，避免维保/巡检点击无反应
+  if (row.bizType === 'WORK_ORDER') {
+    router.push(`/work-orders/${row.bizId}`)
+  } else if (row.bizType === 'MAINTENANCE') {
+    router.push({ path: '/maintenance', query: { taskId: row.bizId } })
+  } else if (row.bizType === 'INSPECTION') {
+    router.push({ path: '/inspection', query: { taskId: row.bizId } })
+  } else {
+    notify.warning('该类型单据暂不支持跳转')
+  }
 }
 
 async function loadOverdue() {

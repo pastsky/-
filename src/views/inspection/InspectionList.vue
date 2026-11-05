@@ -303,6 +303,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { notify } from '@/utils/notify'
 import {
   getInspectionPlans,
@@ -330,6 +331,7 @@ import {
 } from '@/utils/dict'
 
 const userStore = useUserStore()
+const route = useRoute()
 const isAdmin = computed(() => userStore.role === 'ADMIN')
 const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE'].includes(userStore.role))
 
@@ -503,6 +505,13 @@ async function openTask(row) {
   taskVisible.value = true
 }
 
+// 客服工作台「去处理」带 taskId 直达详情
+async function openTaskById(id) {
+  tab.value = 'tasks'
+  current.value = await getInspectionTask(id)
+  taskVisible.value = true
+}
+
 function openRejectTask() {
   rejectReason.value = ''
   rejectVisible.value = true
@@ -574,6 +583,9 @@ onMounted(() => {
   loadPlans()
   loadTasks()
   loadTemplates()
+  if (route.query.taskId) {
+    openTaskById(route.query.taskId).catch(() => notify.error('巡检任务加载失败'))
+  }
 })
 </script>
 

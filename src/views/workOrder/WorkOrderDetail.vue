@@ -45,6 +45,7 @@
           <span v-if="detail.assignee?.phone" class="sub">（{{ detail.assignee.phone }}）</span>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ detail.createdAt }}</el-descriptions-item>
+        <el-descriptions-item label="到场时间">{{ detail.acceptTime || '—' }}</el-descriptions-item>
         <el-descriptions-item label="完工时间">{{ detail.finishTime || '—' }}</el-descriptions-item>
         <el-descriptions-item label="关闭时间">{{ detail.closeTime || '—' }}</el-descriptions-item>
         <el-descriptions-item v-if="detail.cancelTime" label="取消时间">
@@ -948,7 +949,11 @@ async function submitForce() {
   }
 }
 
-onMounted(loadDetail)
+onMounted(async () => {
+  await loadDetail()
+  // 维修工任务卡「上传照片并完工」直达完工弹窗
+  if (route.query.action === 'complete' && canComplete.value) openComplete()
+})
 </script>
 
 <style scoped>

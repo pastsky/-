@@ -108,12 +108,16 @@ function communityName(id) {
   return communities.value.find((c) => c.id === id)?.name || id
 }
 
+// 后端通知类型枚举无 BROADCAST，广播类通知按下列类型过滤
+const BROADCAST_TYPES = ['ANNOUNCEMENT', 'MAINT_PROGRESS', 'BROADCAST']
+
 async function loadHistory() {
   loading.value = true
   loadError.value = false
   try {
     const data = await getBroadcastList()
-    history.value = Array.isArray(data) ? data : data?.list || []
+    const list = Array.isArray(data) ? data : data?.list || []
+    history.value = list.filter((n) => !n.type || BROADCAST_TYPES.includes(n.type))
   } catch (e) {
     loadError.value = true
   } finally {

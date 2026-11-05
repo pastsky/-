@@ -81,16 +81,7 @@ const routes = [
         path: 'teams',
         name: 'TeamList',
         component: () => import('@/views/team/TeamList.vue'),
-        meta: {
-          roles: [
-            'ADMIN',
-            'CUSTOMER_SERVICE',
-            'ENGINEER',
-            'VENDOR_ENGINEER',
-            'BRANCH_ADMIN',
-            'VENDOR_ADMIN'
-          ]
-        }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
         path: 'feedback',

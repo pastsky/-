@@ -98,7 +98,7 @@ const allMenus = [
   { path: '/maintenance', title: '维保计划', icon: 'Tools', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/inspection', title: '巡检管理', icon: 'Aim', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/certificates', title: '证书审核', icon: 'Medal', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
-  { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
+  { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/feedback', title: '反馈工单', icon: 'ChatDotRound', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
   { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN'] },
   { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
@@ -107,7 +107,20 @@ const allMenus = [
 ]
 
 const visibleMenus = computed(() =>
-  allMenus.filter((m) => m.roles.length === 0 || m.roles.includes(userStore.role))
+  allMenus
+    .filter((m) => m.roles.length === 0 || m.roles.includes(userStore.role))
+    // 同一路由按角色显示不同口径：维修工「我的工单」、业主「我的报修」
+    .map((m) => ({
+      ...m,
+      title:
+        m.path === '/work-orders'
+          ? ['ENGINEER', 'VENDOR_ENGINEER'].includes(userStore.role)
+            ? '我的工单'
+            : userStore.role === 'RESIDENT'
+              ? '我的报修'
+              : m.title
+          : m.title
+    }))
 )
 
 const filteredNotifications = computed(() =>

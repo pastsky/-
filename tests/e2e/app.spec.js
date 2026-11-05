@@ -31,18 +31,19 @@ test('登录校验与业主登录跳转', async ({ page }) => {
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page).toHaveURL(/\/work-orders$/)
   await expect(page.locator('.username')).toHaveText('张三')
-  await expect(page.locator('.el-table__body-wrapper')).toBeVisible()
+  // 业主端已改为「我要报修 + 进度卡片」，不再使用管理端宽表
+  await expect(page.getByRole('button', { name: '我要报修' })).toBeVisible()
 })
 
 test('业主数据范围、动态表单、预约时间与新建工单', async ({ page }) => {
   await loginAs(page, 'resident')
 
-  const body = page.locator('.el-table__body-wrapper')
-  await expect(body).toContainText('3栋2单元水管漏水')
-  await expect(body).not.toContainText('5栋1单元停电')
-  await expect(body).not.toContainText('地下车库门禁故障')
+  const cards = page.locator('.resident')
+  await expect(cards.locator('.order-card').filter({ hasText: '3栋2单元水管漏水' })).toBeVisible()
+  await expect(cards).not.toContainText('5栋1单元停电')
+  await expect(cards).not.toContainText('地下车库门禁故障')
 
-  await page.getByRole('button', { name: '新建工单' }).click()
+  await page.getByRole('button', { name: '我要报修' }).click()
   await page.waitForURL(/\/work-orders\/create$/)
 
   // 业主优先级仅 低/中
@@ -71,7 +72,8 @@ test('业主数据范围、动态表单、预约时间与新建工单', async ({
 
   await expect(lastMessage(page)).toContainText('创建成功')
   await page.waitForURL(/\/work-orders$/)
-  await expect(tableRow(page, TITLE)).toContainText('待派单')
+  const created = page.locator('.order-card').filter({ hasText: TITLE })
+  await expect(created).toContainText('待派单')
 })
 
 test('客服派单：候选面板展示持证/在途/今日单量', async ({ page }) => {
@@ -99,17 +101,19 @@ test('客服派单：候选面板展示持证/在途/今日单量', async ({ pag
 test('维修工接单、完工必须上传图片', async ({ page }) => {
   await loginAs(page, 'vendorEngineer')
 
-  await page.getByPlaceholder('工单号 / 标题').fill(TITLE)
-  await page.getByRole('button', { name: '查询' }).click()
-  await tableRow(page, TITLE).getByRole('button', { name: '详情' }).click()
-  await page.waitForURL(/\/work-orders\/\d+$/)
+  // 维修工首屏为卡片式待办：操作按钮前置在卡片上
+  await page.getByPlaceholder('单号 / 标题').fill(TITLE)
+  await page.getByRole('button', { name: '刷新' }).click()
+  const taskCard = page.locator('.task-card').filter({ hasText: TITLE })
+  await expect(taskCard).toContainText('待接单')
 
-  await page.getByRole('button', { name: '接单', exact: true }).click()
+  await taskCard.getByRole('button', { name: '接单', exact: true }).click()
   await confirmBox(page)
   await expect(lastMessage(page)).toContainText('已接单')
-  await expect(page.locator('.el-card').first()).toContainText('处理中')
+  await expect(taskCard).toContainText('处理中')
 
-  await page.getByRole('button', { name: '完工', exact: true }).click()
+  await taskCard.getByRole('button', { name: '上传照片并完工' }).click()
+  await page.waitForURL(/\/work-orders\/\d+\?action=complete/)
   const dialog = page.locator('.el-dialog').filter({ hasText: '现场照片' }).last()
   await expect(dialog).toBeVisible()
 
@@ -167,12 +171,12 @@ test('工单池抢单：在途校验与抢单成功', async ({ page }) => {
   await expect(lastMessage(page)).toContainText('抢单成功')
 
   // 契约（PR-009）：抢单 PENDING+pool_flag=1 -> PROCESSING，并写入 accept_time
-  await page.getByRole('menuitem', { name: '工单管理' }).click()
-  await page.getByPlaceholder('工单号 / 标题').fill('3栋2单元水管漏水')
-  await page.getByRole('button', { name: '查询' }).click()
-  const grabbedRow = tableRow(page, '3栋2单元水管漏水')
-  await expect(grabbedRow).toContainText('处理中')
-  await expect(grabbedRow).not.toContainText('待接单')
+  await page.getByRole('menuitem', { name: '我的工单' }).click()
+  await page.getByPlaceholder('单号 / 标题').fill('3栋2单元水管漏水')
+  await page.getByRole('button', { name: '刷新' }).click()
+  const grabbedCard = page.locator('.task-card').filter({ hasText: '3栋2单元水管漏水' })
+  await expect(grabbedCard).toContainText('处理中')
+  await expect(grabbedCard).not.toContainText('待接单')
 })
 
 test('维修日历按时间段展示工单', async ({ page }) => {
@@ -181,8 +185,10 @@ test('维修日历按时间段展示工单', async ({ page }) => {
   await page.waitForURL(/\/calendar$/)
 
   await expect(page.locator('.metric').first()).toBeVisible()
-  await expect(page.locator('.day-row').first()).toBeVisible()
-  await expect(page.locator('.bar').first()).toBeVisible()
+  // 日历已改为 ECharts 甘特图：断言画布渲染完成，且未落到空态/错误态
+  await expect(page.locator('.chart canvas').first()).toBeVisible()
+  await expect(page.locator('.metric').nth(1)).not.toHaveText('0')
+  await expect(page.locator('.mobile')).toHaveCount(0)
 })
 
 test('客服工作台聚合待办与超时', async ({ page }) => {

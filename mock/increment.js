@@ -726,6 +726,30 @@ export default [
 
   // ============ 反馈 ============
   {
+    url: '/api/feedback',
+    method: 'post',
+    response: ({ headers, body }) => {
+      const user = me(headers)
+      if (!user) return fail(2000, '未登录')
+      const b = parseBody(body)
+      if (!b.content) return fail(1000, '反馈内容不能为空')
+      const feedback = {
+        id: nextId(),
+        orderId: b.orderId ? Number(b.orderId) : null,
+        reporterId: user.id,
+        content: b.content,
+        images: Array.isArray(b.images) ? b.images : [],
+        status: 'SUBMITTED',
+        handlerId: null,
+        resolveRemark: null,
+        handledAt: null,
+        createdAt: now()
+      }
+      feedbacks.unshift(feedback)
+      return ok({ id: feedback.id, status: feedback.status })
+    }
+  },
+  {
     url: '/api/feedback/:id/resolve',
     method: 'put',
     response: ({ query, headers, body }) => {

@@ -27,7 +27,7 @@ export async function loginAs(page, key) {
   const user = ACCOUNTS[key]
   await page.addInitScript((token) => localStorage.setItem('token', token), `mock-token-${user.id}`)
   await page.goto('/work-orders')
-  await page.waitForSelector('.el-table')
+  await page.waitForSelector('.layout')
 }
 
 // 按 label 定位表单项

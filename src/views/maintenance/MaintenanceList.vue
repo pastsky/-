@@ -276,6 +276,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { notify } from '@/utils/notify'
 import { Plus } from '@element-plus/icons-vue'
 import {
@@ -305,6 +306,7 @@ import {
 } from '@/utils/dict'
 
 const userStore = useUserStore()
+const route = useRoute()
 const isAdmin = computed(() => userStore.role === 'ADMIN')
 const canWrite = computed(() => ['ADMIN', 'CUSTOMER_SERVICE'].includes(userStore.role))
 const isAssignee = computed(() => current.value.assigneeId === userStore.currentUser?.id)
@@ -468,6 +470,13 @@ async function openTask(row) {
   taskVisible.value = true
 }
 
+// 客服工作台「去处理」带 taskId 直达详情
+async function openTaskById(id) {
+  tab.value = 'tasks'
+  current.value = await getMaintenanceTask(id)
+  taskVisible.value = true
+}
+
 async function ensureEngineers() {
   if (!engineers.value.length) engineers.value = await getEngineers()
 }
@@ -580,6 +589,9 @@ onMounted(async () => {
   // 字典与主列表解耦：小区接口失败不影响计划/任务加载
   loadPlans()
   loadTasks()
+  if (route.query.taskId) {
+    openTaskById(route.query.taskId).catch(() => notify.error('维保任务加载失败'))
+  }
   try {
     communities.value = await getCommunities()
   } catch (e) {

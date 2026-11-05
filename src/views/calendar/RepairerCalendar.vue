@@ -1,9 +1,9 @@
 <template>
-  <el-card>
+  <el-card class="calendar-page">
     <div class="header">
-      <div>
+      <div class="title-block">
         <span class="title">维修日历</span>
-        <span class="sub">按工程师维度聚合工单/维保/巡检/值班，30 分钟刻度；点击色块查看业务单据</span>
+        <span class="sub">按月查看工作热度，颜色越深当日单据越多；点击日期查看详情</span>
       </div>
       <div class="ops">
         <el-select
@@ -21,64 +21,127 @@
             :value="e.id"
           />
         </el-select>
-        <el-date-picker
-          v-model="month"
-          type="month"
-          value-format="YYYY-MM"
-          :clearable="false"
-          style="width: 150px"
-          @change="loadData"
-        />
+        <el-button-group>
+          <el-button :icon="ArrowLeft" @click="shiftMonth(-1)" />
+          <el-date-picker
+            v-model="month"
+            type="month"
+            value-format="YYYY-MM"
+            :clearable="false"
+            style="width: 130px"
+            @change="loadData"
+          />
+          <el-button :icon="ArrowRight" @click="shiftMonth(1)" />
+        </el-button-group>
         <el-button @click="loadData">刷新</el-button>
       </div>
     </div>
 
-    <el-row :gutter="16" class="summary">
-      <el-col :span="8">
-        <el-card shadow="never"><div class="metric">{{ days.length }}</div><div class="label">有单天数</div></el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never"><div class="metric">{{ blocks.length }}</div><div class="label">时段块数</div></el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never"><div class="metric">{{ totalHours }}</div><div class="label">累计工时（小时）</div></el-card>
-      </el-col>
-    </el-row>
+    <div class="summary">
+      <div class="metric-item">
+        <span class="metric">{{ days.length }}</span>
+        <span class="label">有单天数</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric">{{ blocks.length }}</span>
+        <span class="label">业务单据</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric">{{ totalHours }}</span>
+        <span class="label">累计工时（h）</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric peak">{{ peakDay }}</span>
+        <span class="label">最忙日期</span>
+      </div>
+    </div>
 
     <ListError :failed="loadError" :loading="loading" @retry="loadData" />
 
     <el-skeleton v-if="loading && !blocks.length" :rows="6" animated />
 
-    <!-- 宽屏：ECharts 甘特 -->
-    <div v-else-if="!loadError && !isNarrow" ref="chartRef" class="chart" :style="{ height: chartHeight }"></div>
-
-    <!-- 窄屏：按日竖排列表 -->
-    <div v-else-if="!loadError" class="mobile">
-      <el-empty v-if="!days.length" description="当前区间暂无日程" />
-      <div v-for="day in days" :key="day.date" class="day-card">
-        <div class="day-head">
-          <span>{{ day.date.slice(5) }}</span>
-          <span class="sub">{{ weekday(day.date) }} · {{ dayHours(day) }}h</span>
-        </div>
-        <div
-          v-for="b in day.items"
-          :key="b.key"
-          class="mobile-item"
-          :style="{ borderLeftColor: COLOR[b.blockType] || '#94a3b8' }"
-          @click="openBlock(b)"
-        >
-          <div class="mobile-title">{{ b.bizNo }} · {{ b.title }}</div>
-          <div class="sub">{{ b.start }}{{ b.end ? ' - ' + b.end : ' 起' }} · {{ typeLabel(b.blockType) }}</div>
-        </div>
+    <div v-else-if="!loadError" class="heat-wrap">
+      <div class="heat-weekdays">
+        <span v-for="w in WEEKDAYS" :key="w">{{ w }}</span>
       </div>
+      <div class="heat-grid">
+        <template v-for="(cell, i) in calendarCells" :key="i">
+          <div v-if="!cell" class="heat-slot" />
+          <button
+            v-else
+            type="button"
+            class="heat-cell"
+            :class="[`lvl-${cell.level}`, { busy: cell.total, today: cell.isToday }]"
+            :disabled="!cell.total"
+            @click="openDay(cell)"
+          >
+            <span class="day-num">{{ cell.day }}</span>
+            <span v-if="cell.total" class="day-count">{{ cell.total }}</span>
+            <span class="dots">
+              <i v-for="t in cell.types" :key="t" :class="['dot', `dot-${t}`]" />
+            </span>
+          </button>
+        </template>
+      </div>
+      <div class="legend">
+        <span class="sub">活动量</span>
+        <i v-for="lvl in 5" :key="lvl" :class="['legend-cell', `lvl-${lvl - 1}`]" />
+        <span class="sub">少 → 多</span>
+      </div>
+      <el-empty v-if="!days.length" description="本月暂无日程" :image-size="72" />
     </div>
+
+    <el-drawer v-model="detailVisible" :title="detailTitle" size="420px" append-to-body>
+      <template v-if="activeDay">
+        <div class="detail-summary">
+          <div class="detail-metric">
+            <b>{{ activeDay.total }}</b><span class="sub"> 张单据</span>
+          </div>
+          <div class="detail-metric">
+            <b>{{ activeDay.hours }}</b><span class="sub"> 小时</span>
+          </div>
+        </div>
+        <el-timeline>
+          <el-timeline-item
+            v-for="b in activeDay.items"
+            :key="b.key"
+            :timestamp="`${b.start}${b.end ? ' - ' + b.end : ' 起'}`"
+            placement="top"
+            :color="COLOR[b.blockType]"
+          >
+            <div
+              class="detail-item"
+              :class="{ link: b.blockType !== 'DUTY' }"
+              @click="openBlock(b)"
+            >
+              <div class="detail-title">
+                <el-tag size="small" :color="COLOR[b.blockType]" effect="dark" class="type-tag">
+                  {{ typeLabel(b.blockType) }}
+                </el-tag>
+                <span>{{ b.title || b.bizNo }}</span>
+              </div>
+              <div class="sub">
+                {{ b.bizNo }}
+                <template v-if="b.elevatorNo"> · {{ b.elevatorNo }}</template>
+                <template v-if="b.building"> · {{ b.building }}</template>
+              </div>
+              <div class="detail-meta">
+                <el-tag v-if="b.status" size="small" type="info">{{ b.status }}</el-tag>
+                <span v-if="isOverdue(b)" class="overdue">已超时</span>
+                <span v-if="b.blockType !== 'DUTY'" class="sub">点击查看详情 →</span>
+              </div>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+      </template>
+    </el-drawer>
   </el-card>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import * as echarts from 'echarts'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { getEngineerCalendar } from '@/api/workOrder'
 import { getEngineers } from '@/api/user'
 import ListError from '@/components/ListError.vue'
@@ -100,7 +163,7 @@ const TYPE_LABEL = {
   MAINT_TASK: '维保',
   INSPECTION: '巡检'
 }
-const SERIES_ORDER = ['WORK_ORDER', 'MAINT_TASK', 'INSPECTION', 'DUTY']
+const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 const loading = ref(false)
 const loadError = ref(false)
@@ -108,10 +171,8 @@ const month = ref(new Date().toISOString().slice(0, 7))
 const blocks = ref([])
 const engineers = ref([])
 const engineerId = ref(null)
-const chartRef = ref(null)
-const isNarrow = ref(false)
-let chart = null
-let mediaQuery = null
+const detailVisible = ref(false)
+const activeDay = ref(null)
 
 const canChooseRepairer = computed(() =>
   ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'].includes(userStore.role)
@@ -153,7 +214,49 @@ const totalHours = computed(() => {
   return (minutes / 60).toFixed(1)
 })
 
-const chartHeight = computed(() => `${Math.max(360, days.value.length * 44 + 120)}px`)
+const peakDay = computed(() => {
+  if (!days.value.length) return '—'
+  const top = days.value.reduce((a, b) => (b.items.length > a.items.length ? b : a))
+  return top.date.slice(5)
+})
+
+// 月历网格：周一为第一列，按当日单据量映射 0~4 级热度
+const calendarCells = computed(() => {
+  const [y, m] = month.value.split('-').map(Number)
+  const leading = (new Date(y, m - 1, 1).getDay() + 6) % 7
+  const total = new Date(y, m, 0).getDate()
+  const map = {}
+  days.value.forEach((d) => {
+    map[d.date] = d
+  })
+  const max = Math.max(4, ...days.value.map((d) => d.items.length))
+  const today = new Date().toISOString().slice(0, 10)
+  const cells = []
+  for (let i = 0; i < leading; i += 1) cells.push(null)
+  for (let d = 1; d <= total; d += 1) {
+    const date = `${month.value}-${String(d).padStart(2, '0')}`
+    const day = map[date]
+    const items = day?.items || []
+    cells.push({
+      date,
+      day: d,
+      items,
+      total: items.length,
+      hours: day ? dayHours(day) : '0.0',
+      types: [...new Set(items.map((i) => i.blockType))],
+      isToday: date === today,
+      level: items.length ? Math.min(4, Math.ceil((items.length / max) * 4)) : 0
+    })
+  }
+  while (cells.length % 7 !== 0) cells.push(null)
+  return cells
+})
+
+const detailTitle = computed(() =>
+  activeDay.value
+    ? `${activeDay.value.date} ${weekday(activeDay.value.date)} · 当日单据`
+    : '当日单据'
+)
 
 function engineerLabel(e) {
   const name = e.realName || e.username || '未命名'
@@ -178,11 +281,6 @@ function weekday(date) {
   return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(date).getDay()]
 }
 
-function isWeekend(date) {
-  const day = new Date(date).getDay()
-  return day === 0 || day === 6
-}
-
 function typeLabel(type) {
   return TYPE_LABEL[type] || type
 }
@@ -192,164 +290,26 @@ function dayHours(day) {
   return (minutes / 60).toFixed(1)
 }
 
-function isDone(status) {
-  return ['COMPLETED', 'PENDING_REVIEW', 'CLOSED', 'CONFIRMED', 'CANCELED'].includes(status)
-}
-
 function isOverdue(b) {
   return !!b.overdue || ['ESCALATED', 'MISSED'].includes(b.status)
+}
+
+function shiftMonth(delta) {
+  const [y, m] = month.value.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  month.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  loadData()
+}
+
+function openDay(cell) {
+  activeDay.value = cell
+  detailVisible.value = true
 }
 
 function openBlock(b) {
   if (b.blockType === 'WORK_ORDER') router.push(`/work-orders/${b.bizId}`)
   else if (b.blockType === 'MAINT_TASK') router.push({ path: '/maintenance', query: { taskId: b.bizId } })
   else if (b.blockType === 'INSPECTION') router.push({ path: '/inspection', query: { taskId: b.bizId } })
-}
-
-function buildSeries() {
-  const dates = days.value.map((d) => d.date)
-  return SERIES_ORDER.map((type) => ({
-    name: typeLabel(type),
-    type: 'custom',
-    encode: { x: [1, 2], y: 0 },
-    itemStyle: { color: COLOR[type] },
-    data: days.value.flatMap((day, dayIdx) =>
-      day.items
-        .filter((b) => b.blockType === type)
-        .map((b) => {
-          const startMin = toMinutes(b.start)
-          const endMin = b.end ? toMinutes(b.end) : Math.min(1440, startMin + 60)
-          return {
-            value: [dayIdx, startMin, Math.max(startMin + 15, endMin)],
-            meta: { ...b, date: dates[dayIdx] }
-          }
-        })
-    ),
-    renderItem(params, api) {
-      const dayIdx = api.value(0)
-      const start = api.value(1)
-      const end = api.value(2)
-      const startCoord = api.coord([start, dayIdx])
-      const endCoord = api.coord([end, dayIdx])
-      const barHeight = Math.max(12, api.size([0, 1])[1] * 0.52)
-      const meta = params.data?.meta || {}
-      const done = isDone(meta.status)
-      const overdue = isOverdue(meta)
-      return {
-        type: 'rect',
-        shape: {
-          x: startCoord[0],
-          y: startCoord[1] - barHeight / 2,
-          width: Math.max(4, endCoord[0] - startCoord[0]),
-          height: barHeight,
-          r: 4
-        },
-        style: {
-          fill: COLOR[type],
-          opacity: done ? 0.45 : 0.92,
-          stroke: overdue ? '#ef4444' : 'transparent',
-          lineWidth: overdue ? 2 : 0
-        }
-      }
-    }
-  }))
-}
-
-function buildOption() {
-  const dates = days.value.map((d) => d.date)
-  const today = new Date().toISOString().slice(0, 10)
-  return {
-    animationDuration: 240,
-    grid: { left: 96, right: 28, top: 44, bottom: 64 },
-    legend: {
-      bottom: 0,
-      itemWidth: 10,
-      itemHeight: 10,
-      textStyle: { fontSize: 12, color: '#475569' },
-      data: SERIES_ORDER.map((t) => typeLabel(t))
-    },
-    tooltip: {
-      trigger: 'item',
-      confine: true,
-      formatter: (p) => {
-        const m = p.data?.meta || {}
-        const rows = [
-          `<b>${m.bizNo || '—'}</b>`,
-          m.title ? `事项：${m.title}` : '',
-          m.elevatorNo ? `电梯：${m.elevatorNo}` : '',
-          m.building ? `位置：${m.building}` : '',
-          `时段：${m.start || ''}${m.end ? ' - ' + m.end : ' 起'}`,
-          m.assigneeName ? `负责人：${m.assigneeName}` : '',
-          m.status ? `状态：${m.status}` : ''
-        ].filter(Boolean)
-        return rows.join('<br/>')
-      }
-    },
-    xAxis: {
-      type: 'value',
-      min: 0,
-      max: 1440,
-      interval: 30,
-      axisLabel: {
-        fontSize: 12,
-        color: '#64748b',
-        formatter: (value) => (value % 120 === 0 ? `${String(value / 60).padStart(2, '0')}:00` : '')
-      },
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#eef0f4', type: 'dashed' } }
-    },
-    yAxis: {
-      type: 'category',
-      data: dates,
-      inverse: true,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
-      axisLabel: {
-        fontSize: 12,
-        margin: 12,
-        formatter: (date) => {
-          const [m, d] = date.slice(5).split('-')
-          return `${m}-${d} ${weekday(date)}`
-        },
-        color: (value) => (isWeekend(value) ? '#9aa3b2' : value === today ? '#3b82f6' : '#334155')
-      },
-      splitLine: { lineStyle: { color: '#eef0f4', type: 'dashed' } }
-    },
-    dataZoom: [
-      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-      { type: 'slider', xAxisIndex: 0, height: 16, bottom: 30, filterMode: 'none' }
-    ],
-    graphic: days.value.length
-      ? []
-      : [
-          {
-            type: 'text',
-            left: 'center',
-            top: 'middle',
-            style: { text: '当前区间暂无日程', fill: '#94a3b8', fontSize: 14 }
-          }
-        ],
-    series: buildSeries()
-  }
-}
-
-function renderChart() {
-  if (isNarrow.value || loadError.value) return
-  nextTick(() => {
-    if (!chartRef.value) return
-    if (!chart) {
-      chart = echarts.init(chartRef.value)
-      chart.on('click', handleClick)
-    }
-    chart.setOption(buildOption(), true)
-    chart.resize()
-  })
-}
-
-function handleClick(params) {
-  const meta = params.data?.meta
-  if (meta) openBlock(meta)
 }
 
 async function loadData() {
@@ -371,29 +331,10 @@ async function loadData() {
     blocks.value = []
   } finally {
     loading.value = false
-    renderChart()
   }
 }
-
-function handleResize() {
-  const narrow = mediaQuery ? mediaQuery.matches : window.innerWidth < 768
-  isNarrow.value = narrow
-  if (narrow) {
-    chart?.dispose()
-    chart = null
-  } else {
-    renderChart()
-  }
-}
-
-watch(blocks, () => renderChart())
 
 onMounted(async () => {
-  mediaQuery = window.matchMedia('(max-width: 768px)')
-  isNarrow.value = mediaQuery.matches
-  mediaQuery.addEventListener('change', handleResize)
-  window.addEventListener('resize', handleResize)
-
   if (canChooseRepairer.value) {
     engineers.value = (await getEngineers().catch(() => [])) || []
     engineerId.value = engineers.value[0]?.id || null
@@ -401,29 +342,15 @@ onMounted(async () => {
     engineerId.value = userStore.currentUser?.id
   }
   await loadData()
-  if (!isNarrow.value && chartRef.value) {
-    if (!chart) {
-      chart = echarts.init(chartRef.value)
-      chart.on('click', handleClick)
-    }
-    chart.setOption(buildOption(), true)
-  }
-})
-
-onUnmounted(() => {
-  mediaQuery?.removeEventListener('change', handleResize)
-  window.removeEventListener('resize', handleResize)
-  chart?.dispose()
-  chart = null
 })
 </script>
 
 <style scoped>
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -442,49 +369,246 @@ onUnmounted(() => {
   gap: 10px;
 }
 .summary {
-  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
 }
-.summary :deep(.el-card__body) {
-  text-align: center;
-  padding: 12px;
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: #f7f8fa;
+  border-radius: 10px;
 }
 .metric {
   font-size: 22px;
   font-weight: 600;
+  line-height: 1.2;
+  color: var(--el-text-color-primary);
+}
+.metric.peak {
+  font-size: 18px;
 }
 .label {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.chart {
+.heat-wrap {
   width: 100%;
 }
-.mobile {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.day-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-.day-head {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
+.heat-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
   margin-bottom: 8px;
 }
-.mobile-item {
-  border-left: 3px solid #94a3b8;
-  padding: 6px 0 6px 10px;
+.heat-weekdays span {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-text-color-secondary);
+  padding: 2px 0;
+}
+.heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.heat-slot {
+  min-height: 68px;
+}
+.heat-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+.heat-cell.busy:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(47, 111, 237, 0.16);
+  filter: brightness(1.03);
+}
+.heat-cell:disabled {
+  cursor: default;
+}
+.heat-cell:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+.heat-cell.lvl-0 {
+  background: #f7f8fa;
+  color: var(--el-text-color-placeholder);
+}
+.heat-cell.lvl-1 {
+  background: #eaf2ff;
+  color: #1e3f73;
+}
+.heat-cell.lvl-2 {
+  background: #cfe0ff;
+  color: #173666;
+}
+.heat-cell.lvl-3 {
+  background: #8ab4fb;
+  color: #ffffff;
+}
+.heat-cell.lvl-4 {
+  background: #2f6fed;
+  color: #ffffff;
+}
+.heat-cell.today {
+  box-shadow: inset 0 0 0 2px var(--el-color-primary);
+}
+.heat-cell.today.lvl-3,
+.heat-cell.today.lvl-4 {
+  box-shadow: inset 0 0 0 2px #ffffff;
+}
+.day-num {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+.day-count {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.dots {
+  display: flex;
+  gap: 4px;
+  height: 6px;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.dot-WORK_ORDER {
+  background: #f59e0b;
+}
+.dot-MAINT_TASK {
+  background: #10b981;
+}
+.dot-INSPECTION {
+  background: #8b5cf6;
+}
+.dot-DUTY {
+  background: #94a3b8;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 14px;
+}
+.legend-cell {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.legend-cell.lvl-0 {
+  background: #f7f8fa;
+}
+.legend-cell.lvl-1 {
+  background: #eaf2ff;
+}
+.legend-cell.lvl-2 {
+  background: #cfe0ff;
+}
+.legend-cell.lvl-3 {
+  background: #8ab4fb;
+}
+.legend-cell.lvl-4 {
+  background: #2f6fed;
+}
+.detail-summary {
+  display: flex;
+  gap: 24px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: #f7f8fa;
+  border-radius: 10px;
+}
+.detail-metric b {
+  font-size: 20px;
+  margin-right: 4px;
+}
+.detail-item {
+  padding: 2px 0 6px;
+}
+.detail-item.link {
   cursor: pointer;
 }
-.mobile-item + .mobile-item {
-  border-top: 1px dashed var(--el-border-color-lighter);
+.detail-item.link:hover .detail-title span:last-child {
+  color: var(--el-color-primary);
 }
-.mobile-title {
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
-  margin-bottom: 2px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.type-tag {
+  border: none;
+  color: #fff;
+}
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.overdue {
+  font-size: 12px;
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .heat-grid,
+  .heat-weekdays {
+    gap: 4px;
+  }
+  .heat-slot,
+  .heat-cell {
+    min-height: 48px;
+    border-radius: 8px;
+    padding: 4px 6px;
+  }
+  .day-num {
+    font-size: 12px;
+  }
+  .day-count {
+    top: 4px;
+    right: 6px;
+    font-size: 10px;
+  }
+  .dots {
+    display: none;
+  }
+  .ops {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 </style>

@@ -231,16 +231,23 @@ test('工单池抢单：在途校验与抢单成功', async ({ page }) => {
   await expect(grabbedCard).not.toContainText('待接单')
 })
 
-test('维修日历按时间段展示工单', async ({ page }) => {
+test('维修日历按月热力图展示并可查看当日详情', async ({ page }) => {
   await loginAs(page, 'engineer')
   await page.getByRole('menuitem', { name: '维修日历' }).click()
   await page.waitForURL(/\/calendar$/)
 
-  await expect(page.locator('.metric').first()).toBeVisible()
-  // 日历已改为 ECharts 甘特图：断言画布渲染完成，且未落到空态/错误态
-  await expect(page.locator('.chart canvas').first()).toBeVisible()
+  // 月历热力图：7 列网格，当月天数完整渲染
+  await expect(page.locator('.heat-grid')).toBeVisible()
+  expect(await page.locator('.heat-cell').count()).toBeGreaterThanOrEqual(28)
   await expect(page.locator('.metric').nth(1)).not.toHaveText('0')
   await expect(page.locator('.mobile')).toHaveCount(0)
+
+  // 点击有单据的日期 -> 抽屉展示当日明细
+  await page.locator('.heat-cell.busy').first().click()
+  const drawer = page.locator('.el-drawer').filter({ hasText: '当日单据' })
+  await expect(drawer).toBeVisible()
+  await expect(drawer.locator('.detail-item').first()).toBeVisible()
+  await expect(drawer).toContainText('张单据')
 })
 
 test('客服工作台聚合待办与超时', async ({ page }) => {

@@ -1,5 +1,5 @@
 // 证书审核 / 巡检 / 维保 Mock（对齐 PR-008 / PR-017 / PR-018）
-import { users, workOrders, elevators, groups, nextId, now } from './data'
+import { users, workOrders, elevators, groups, communities, nextId, now } from './data'
 
 const ok = (data) => ({ code: 0, message: 'success', data })
 const fail = (code, message) => ({ code, message, data: null })
@@ -114,7 +114,21 @@ const pointTemplates = [
 ]
 
 const inspectionPlans = [
-  { id: 1, planName: '金桂园电梯月度巡检', elevatorType: 'PASSENGER', cycleType: 'MONTHLY', effectiveFrom: '2026-10-01', effectiveTo: '', status: 'ACTIVE', taskCount: 2 }
+  {
+    id: 1,
+    planName: '金桂园电梯月度巡检',
+    branchId: 1,
+    branchName: '金桂园小区',
+    frequency: 'MONTHLY',
+    frequencyTime: '09:00',
+    pointTemplateId: 1,
+    templateName: '电梯月度巡检模板',
+    effectiveFrom: '2026-10-01',
+    effectiveTo: '',
+    autoGenerate: true,
+    status: 'ENABLED',
+    taskCount: 2
+  }
 ]
 
 const inspectionTasks = [
@@ -261,7 +275,7 @@ export default [
     response: ({ query }) => {
       let list = repairerTags.slice()
       if (query?.status) list = list.filter((t) => t.status === query.status)
-      return ok(list.sort((a, b) => a.sortNo - b.sortNo))
+      return ok({ list: list.sort((a, b) => a.sortNo - b.sortNo) })
     }
   },
   {
@@ -316,7 +330,7 @@ export default [
   {
     url: '/api/type-cert-mappings',
     method: 'get',
-    response: () => ok(typeCertMappings)
+    response: () => ok({ list: typeCertMappings })
   },
   {
     url: '/api/type-cert-mappings/:type',
@@ -339,7 +353,7 @@ export default [
   {
     url: '/api/inspection/point-templates',
     method: 'get',
-    response: () => ok(pointTemplates)
+    response: () => ok({ list: pointTemplates })
   },
   {
     url: '/api/inspection/point-templates',
@@ -401,14 +415,32 @@ export default [
   {
     url: '/api/inspection/plans',
     method: 'get',
-    response: () => ok(inspectionPlans)
+    response: ({ query }) => {
+      let list = inspectionPlans.slice()
+      if (query?.status) list = list.filter((p) => p.status === query.status)
+      if (query?.branchId) list = list.filter((p) => p.branchId === Number(query.branchId))
+      return ok(paginate(list, query?.page, query?.pageSize))
+    }
   },
   {
     url: '/api/inspection/plans',
     method: 'post',
     response: ({ body }) => {
       const b = parseBody(body)
-      const plan = { id: nextId(), ...b, taskCount: 0 }
+      if (inspectionPlans.some((p) => p.branchId === Number(b.branchId) && p.status === 'ENABLED')) {
+        return fail(3002, '该小区已存在启用中的巡检计划')
+      }
+      const template = pointTemplates.find((t) => t.id === Number(b.pointTemplateId))
+      const plan = {
+        id: nextId(),
+        ...b,
+        branchId: Number(b.branchId),
+        pointTemplateId: Number(b.pointTemplateId),
+        branchName: communities.find((c) => c.id === Number(b.branchId))?.name || '金桂园小区',
+        templateName: template?.templateName || '',
+        status: 'ENABLED',
+        taskCount: 0
+      }
       inspectionPlans.push(plan)
       return ok(plan)
     }

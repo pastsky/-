@@ -1,8 +1,9 @@
 import request from '@/utils/request'
+import { unwrapPage } from '@/utils/unwrap'
 
-// ============ 维保计划 ============
-export function getMaintenancePlans(params) {
-  return request.get('/maintenance/plans', { params })
+// ============ 维保计划（分页） ============
+export async function getMaintenancePlans(params) {
+  return unwrapPage(await request.get('/maintenance/plans', { params }))
 }
 
 export function createMaintenancePlan(data) {
@@ -18,17 +19,19 @@ export function generateMaintenanceTasks(id, data) {
   return request.post(`/maintenance/plans/${id}/generate`, data)
 }
 
-// ============ 维保任务 ============
-export function getMaintenanceTasks(params) {
-  return request.get('/maintenance/tasks', { params })
+// ============ 维保任务（分页） ============
+export async function getMaintenanceTasks(params) {
+  return unwrapPage(await request.get('/maintenance/tasks', { params }))
 }
 
 export function getMaintenanceTask(id) {
   return request.get(`/maintenance/tasks/${id}`)
 }
 
-export function getMaintenanceTimeline(id) {
-  return request.get(`/maintenance/tasks/${id}/timeline`)
+// {list,total}
+export async function getMaintenanceTimeline(id) {
+  const data = await request.get(`/maintenance/tasks/${id}/timeline`)
+  return { list: Array.isArray(data?.list) ? data.list : [], total: Number(data?.total || 0) }
 }
 
 export function assignMaintenanceTask(id, data) {

@@ -427,6 +427,8 @@ async function loadTags() {
   tagLoading.value = true
   try {
     tags.value = await getRepairerTags()
+  } catch (e) {
+    tags.value = []
   } finally {
     tagLoading.value = false
   }
@@ -492,6 +494,8 @@ async function loadMappings() {
   mappingLoading.value = true
   try {
     mappings.value = await getTypeCertMappings()
+  } catch (e) {
+    mappings.value = []
   } finally {
     mappingLoading.value = false
   }

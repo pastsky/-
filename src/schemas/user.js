@@ -18,7 +18,7 @@ export function buildUserSchema({ requirePassword }) {
       realName: z.string().trim().min(1, '请填写姓名').max(20, '姓名不超过 20 字'),
       role: z.string().min(1, '请选择角色'),
       phone,
-      groupId: z.number().int().positive().nullable().optional(),
+      teamId: z.number().int().positive().nullable().optional(),
       address: z.string().max(100, '地址不超过 100 字').optional(),
       password: requirePassword
         ? z.string().min(6, '密码至少 6 位').max(32, '密码不超过 32 位')

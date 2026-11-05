@@ -1,12 +1,14 @@
 import request from '@/utils/request'
+import { unwrapArray, unwrapPage } from '@/utils/unwrap'
 
 // ============ 工单：存量动作 ============
 export function createWorkOrder(data) {
   return request.post('/work-orders', data)
 }
 
-export function getWorkOrderList(params) {
-  return request.get('/work-orders', { params })
+// 分页：{list,total,page,pageSize}
+export async function getWorkOrderList(params) {
+  return unwrapPage(await request.get('/work-orders', { params }))
 }
 
 export function getWorkOrderDetail(id) {
@@ -38,7 +40,7 @@ export function rateWorkOrder(id, data) {
 }
 
 export function getWorkOrderLogs(id) {
-  return request.get(`/work-orders/${id}/logs`)
+  return request.get(`/work-orders/${id}/logs`).then(unwrapArray)
 }
 
 // ============ 工单：增量动作（BOP42~51 / R1） ============
@@ -72,8 +74,9 @@ export function rejectWorkOrder(id, data) {
   return request.post(`/work-orders/${id}/reject`, data)
 }
 
+// 回访（BOP102）：路径为 /review-result
 export function reviewWorkOrder(id, data) {
-  return request.post(`/work-orders/${id}/review`, data)
+  return request.post(`/work-orders/${id}/review-result`, data)
 }
 
 // 预约审核
@@ -91,9 +94,9 @@ export function forceStatus(id, data) {
   return request.post(`/work-orders/${id}/force-status`, data)
 }
 
-// 工单池
-export function getWorkOrderPool(params) {
-  return request.get('/work-orders/pool', { params })
+// 工单池（分页；showAll 仅维修工浏览用）
+export async function getWorkOrderPool(params) {
+  return unwrapPage(await request.get('/work-orders/pool', { params }))
 }
 
 // 全局搜索（客服工作台）
@@ -114,9 +117,10 @@ export function batchCancel(data) {
   return request.post('/work-orders/batch-cancel', data)
 }
 
-// 维修日历：按工程师维度
-export function getEngineerCalendar(engineerId, params) {
-  return request.get(`/engineers/${engineerId}/calendar`, { params })
+// 维修日历：按工程师维度，返回 {blocks:[...]}
+export async function getEngineerCalendar(engineerId, params) {
+  const data = await request.get(`/engineers/${engineerId}/calendar`, { params })
+  return { ...data, blocks: Array.isArray(data?.blocks) ? data.blocks : [] }
 }
 
 // 预约频控（BOP-R2/R3）与值班可用性

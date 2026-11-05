@@ -1,7 +1,9 @@
 import request from '@/utils/request'
+import { unwrapPage } from '@/utils/unwrap'
 
-export function getFeedbackList(params) {
-  return request.get('/feedback', { params })
+// 分页：{list,total,page,pageSize}
+export async function getFeedbackList(params) {
+  return unwrapPage(await request.get('/feedback', { params }))
 }
 
 export function getFeedbackDetail(id) {

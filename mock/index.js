@@ -38,7 +38,8 @@ function findUser(id) {
 
 function toUserVO(u) {
   const { password, ...rest } = u
-  return rest
+  const teamName = groups.find((g) => g.id === rest.groupId)?.name || ''
+  return { ...rest, teamId: rest.groupId ?? null, teamName }
 }
 
 function toUserBrief(u) {
@@ -63,7 +64,9 @@ function toEngineerBrief(u) {
     phone: u.phone,
     role: u.role,
     groupId: u.groupId,
+    teamId: u.groupId,
     groupName: groups.find((g) => g.id === u.groupId)?.name || '未分组',
+    teamName: groups.find((g) => g.id === u.groupId)?.name || '未分组',
     onDuty: u.onDuty,
     certs: (u.certs || []).map((c) => c.tagCode),
     validCerts: (u.certs || []).filter(
@@ -317,6 +320,16 @@ export default [
     }
   },
   {
+    url: '/api/notifications/unread-count',
+    method: 'get',
+    response: ({ headers }) => {
+      const user = me(headers)
+      return ok({
+        unreadCount: notifications.filter((n) => n.userId === user?.id && !n.isRead).length
+      })
+    }
+  },
+  {
     url: '/api/notifications/read-all',
     method: 'put',
     response: ({ headers }) => {
@@ -360,7 +373,11 @@ export default [
     response: ({ query }) => {
       let list = dutySchedules.slice()
       if (query?.month) list = list.filter((d) => d.date.startsWith(query.month))
-      return ok(list)
+      if (query?.startDate) list = list.filter((d) => d.date >= query.startDate)
+      if (query?.endDate) list = list.filter((d) => d.date <= query.endDate)
+      if (query?.teamId) list = list.filter((d) => d.teamId === Number(query.teamId))
+      if (query?.status) list = list.filter((d) => d.status === query.status)
+      return ok({ list })
     }
   },
 
@@ -372,7 +389,10 @@ export default [
       ok(
         users
           .filter((u) => ['ENGINEER', 'VENDOR_ENGINEER'].includes(u.role) && u.status === 'ACTIVE')
-          .filter((u) => (query?.groupId ? u.groupId === Number(query.groupId) : true))
+          .filter((u) => {
+            const teamId = query?.teamId ?? query?.groupId
+            return teamId ? u.groupId === Number(teamId) : true
+          })
           .map(toEngineerBrief)
       )
   },
@@ -414,7 +434,7 @@ export default [
         building: b.building || '',
         room: b.room || '',
         role: b.role,
-        groupId: b.groupId ? Number(b.groupId) : null,
+        groupId: b.teamId || b.groupId ? Number(b.teamId || b.groupId) : null,
         onDuty: 1,
         certs: [],
         status: b.status || 'ACTIVE',
@@ -453,7 +473,12 @@ export default [
         building: b.building ?? user.building,
         room: b.room ?? user.room,
         role: b.role ?? user.role,
-        groupId: b.groupId === undefined ? user.groupId : b.groupId ? Number(b.groupId) : null,
+        groupId:
+          b.teamId === undefined && b.groupId === undefined
+            ? user.groupId
+            : b.teamId || b.groupId
+              ? Number(b.teamId || b.groupId)
+              : null,
         status: b.status ?? user.status,
         updatedAt: now()
       })
@@ -498,19 +523,39 @@ export default [
     response: ({ headers, query }) => {
       const user = me(headers)
       if (!user) return fail(2000, '未登录')
-      const showAll = query?.show_all === true || query?.show_all === 'true'
+      const showAll =
+        query?.showAll === true ||
+        query?.showAll === 'true' ||
+        query?.show_all === true ||
+        query?.show_all === 'true'
       let list = workOrders.filter((o) => o.status === 'PENDING' && o.poolFlag === 1)
       if (!showAll && ['ENGINEER', 'VENDOR_ENGINEER'].includes(user.role)) {
-        // 默认本小区优先展示（不隐藏其它小区，仅排序靠前，show_all 时取消排序偏好）
+        // 默认本小区优先展示（不隐藏其它小区，仅排序靠前，showAll 时取消排序偏好）
         list = sortPool(list, user)
       }
       if (query?.type) list = list.filter((o) => o.type === query.type)
       if (query?.priority) list = list.filter((o) => o.priority === query.priority)
-      const items = list.map((o) => ({
-        ...toListItem(o),
-        myGroup: !!user.groupId && findUser(o.reporterId)?.groupId === user.groupId,
-        waitHours: Number(((Date.now() - new Date(o.createdAt.replace(' ', 'T')).getTime()) / 3600000).toFixed(1))
-      }))
+      // 池 VO 仅暴露契约字段，不含报修人姓名/手机号
+      const items = list.map((o) => {
+        const reporter = findUser(o.reporterId)
+        return {
+          id: o.id,
+          orderNo: o.orderNo,
+          title: o.title,
+          type: o.type,
+          priority: o.priority,
+          status: o.status,
+          poolFlag: o.poolFlag,
+          poolType: o.source,
+          location: o.location,
+          appointmentTime: o.appointmentTime,
+          branchName: communities.find((c) => c.id === o.communityId)?.name || '',
+          teamId: reporter?.groupId || null,
+          myTeam: !!user.groupId && reporter?.groupId === user.groupId,
+          certBlocked: false,
+          overdue: isOverdue(o)
+        }
+      })
       return ok(paginate(items, query?.page, query?.pageSize))
     }
   },
@@ -961,7 +1006,7 @@ export default [
     }
   },
   {
-    url: '/api/work-orders/:id/review',
+    url: '/api/work-orders/:id/review-result',
     method: 'post',
     response: ({ query, headers, body }) => {
       const user = me(headers)

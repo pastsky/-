@@ -1,25 +1,41 @@
 import request from '@/utils/request'
+import { cachedRequest, clearDictCache, unwrapList, unwrapPage } from '@/utils/unwrap'
 
-// ============ 点位模板 ============
-export function getPointTemplates(params) {
-  return request.get('/inspection/point-templates', { params })
+// ============ 点位模板（仅 {list}，≤200 不分页） ============
+export async function getPointTemplates(params) {
+  const data = params
+    ? await request.get('/inspection/point-templates', { params })
+    : await cachedRequest('inspection-templates', () => request.get('/inspection/point-templates'))
+  return unwrapList(data)
 }
 
-export function createPointTemplate(data) {
-  return request.post('/inspection/point-templates', data)
+export async function createPointTemplate(data) {
+  try {
+    return await request.post('/inspection/point-templates', data)
+  } finally {
+    clearDictCache('inspection-templates')
+  }
 }
 
-export function updatePointTemplate(id, data) {
-  return request.put(`/inspection/point-templates/${id}`, data)
+export async function updatePointTemplate(id, data) {
+  try {
+    return await request.put(`/inspection/point-templates/${id}`, data)
+  } finally {
+    clearDictCache('inspection-templates')
+  }
 }
 
-export function deletePointTemplate(id) {
-  return request.delete(`/inspection/point-templates/${id}`)
+export async function deletePointTemplate(id) {
+  try {
+    return await request.delete(`/inspection/point-templates/${id}`)
+  } finally {
+    clearDictCache('inspection-templates')
+  }
 }
 
-// ============ 巡检计划 ============
-export function getInspectionPlans(params) {
-  return request.get('/inspection/plans', { params })
+// ============ 巡检计划（分页） ============
+export async function getInspectionPlans(params) {
+  return unwrapPage(await request.get('/inspection/plans', { params }))
 }
 
 export function createInspectionPlan(data) {
@@ -34,17 +50,18 @@ export function generateInspectionTasks(id, data) {
   return request.post(`/inspection/plans/${id}/generate`, data)
 }
 
-// ============ 巡检任务 ============
-export function getInspectionTasks(params) {
-  return request.get('/inspection/tasks', { params })
+// ============ 巡检任务（分页） ============
+export async function getInspectionTasks(params) {
+  return unwrapPage(await request.get('/inspection/tasks', { params }))
 }
 
 export function getInspectionTask(id) {
   return request.get(`/inspection/tasks/${id}`)
 }
 
-export function getInspectionPoints(id) {
-  return request.get(`/inspection/tasks/${id}/points`)
+// 仅 {list}
+export async function getInspectionPoints(id) {
+  return unwrapList(await request.get(`/inspection/tasks/${id}/points`))
 }
 
 export function acceptInspectionTask(id) {

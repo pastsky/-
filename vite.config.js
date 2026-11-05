@@ -4,9 +4,10 @@ import { viteMockServe } from 'vite-plugin-mock'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig(({ command, mode }) => {
-  // VITE_USE_MOCK=false 时关闭本地 Mock，改走后端真实接口（见 .env.real / npm run dev:real）
+  // 默认走真实后端（.env.real）；npm run dev:mock 时开启本地 Mock（仅 E2E/离线演示）
   const env = loadEnv(mode, process.cwd())
-  const useMock = command === 'serve' && env.VITE_USE_MOCK !== 'false'
+  const useMock = command === 'serve' && env.VITE_USE_MOCK === 'true'
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://127.0.0.1:8080'
 
   return {
     plugins: [
@@ -24,12 +25,13 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 5173,
       proxy: {
+        // 后端接口前缀 /api 原样透传，不做路径改写
         '/api': {
-          target: 'http://localhost:8080',
+          target: proxyTarget,
           changeOrigin: true
         },
         '/uploads': {
-          target: 'http://localhost:8080',
+          target: proxyTarget,
           changeOrigin: true
         }
       }

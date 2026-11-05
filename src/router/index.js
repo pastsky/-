@@ -17,7 +17,7 @@ const routes = [
         path: 'dispatch',
         name: 'Dispatch',
         component: () => import('@/views/dispatch/DispatchWorkbench.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] }
       },
       {
         path: 'work-orders',

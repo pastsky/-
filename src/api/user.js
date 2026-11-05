@@ -1,7 +1,9 @@
 import request from '@/utils/request'
+import { cachedRequest, unwrapArray, unwrapList, unwrapPage } from '@/utils/unwrap'
 
-export function getUserList(params) {
-  return request.get('/users', { params })
+// 分页：{list,total,page,pageSize}
+export async function getUserList(params) {
+  return unwrapPage(await request.get('/users', { params }))
 }
 
 export function createUser(data) {
@@ -25,14 +27,18 @@ export function resetPassword(id, data) {
   return request.put(`/users/${id}/password`, data)
 }
 
-// 指派候选：带班组、持证、在途、今日单量、超时率
-export function getEngineers(params) {
-  return request.get('/users/engineers', { params })
+// 指派候选：裸数组；带班组、持证、在途、今日单量、超时率
+export async function getEngineers(params) {
+  return unwrapArray(await request.get('/users/engineers', { params }))
 }
 
-// 后端契约：用户组 = 班组 team（GET /api/teams，返回数组），无 /api/users/groups
+// 后端契约：用户组 = 班组 team（GET /api/teams，返回 {list:[...]}）
 export async function getGroups(params) {
-  const data = await request.get('/teams', { params })
-  const list = Array.isArray(data) ? data : data?.list || []
-  return list.map((t) => ({ ...t, name: t.name || t.teamName || t.team_name || `班组${t.id}` }))
+  const data = params
+    ? await request.get('/teams', { params })
+    : await cachedRequest('teams', () => request.get('/teams'))
+  return unwrapList(data).map((t) => ({
+    ...t,
+    name: t.name || t.teamName || t.team_name || `班组${t.id}`
+  }))
 }

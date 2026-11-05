@@ -376,7 +376,7 @@ export const ELEVATOR_TYPE_MAP = {
   PASSENGER: '客梯',
   FREIGHT: '货梯',
   MEDICAL: '医用梯',
-  ESCALATOR: '扶梯'
+  OTHER: '其他'
 }
 
 export const ELEVATOR_TYPE_OPTIONS = Object.keys(ELEVATOR_TYPE_MAP).map((value) => ({
@@ -385,6 +385,13 @@ export const ELEVATOR_TYPE_OPTIONS = Object.keys(ELEVATOR_TYPE_MAP).map((value) 
 }))
 
 // ============ 巡检（PR-018） ============
+// 巡检计划频率（InspectionFrequencyEnum）
+export const INSPECTION_FREQUENCY_MAP = {
+  DAILY: '每日',
+  WEEKLY: '每周',
+  MONTHLY: '每月'
+}
+
 export const INSPECTION_STATUS_MAP = {
   PENDING: '待执行',
   ASSIGNED: '待接单',

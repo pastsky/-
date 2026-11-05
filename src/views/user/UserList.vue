@@ -34,7 +34,7 @@
       </el-table-column>
       <el-table-column prop="phone" label="手机号" width="125" />
       <el-table-column label="班组" width="100">
-        <template #default="{ row }">{{ groupName(row.groupId) }}</template>
+        <template #default="{ row }">{{ row.teamName || groupName(row.teamId || row.groupId) }}</template>
       </el-table-column>
       <el-table-column label="证书" width="150">
         <template #default="{ row }">
@@ -112,7 +112,7 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="isRepairerRole" label="班组">
-          <el-select v-model="form.groupId" clearable placeholder="可不入组" style="width: 100%">
+          <el-select v-model="form.teamId" clearable placeholder="可不入组" style="width: 100%">
             <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
@@ -254,7 +254,7 @@ function resetForm() {
     room: '',
     communityId: 1,
     role: '',
-    groupId: null,
+    teamId: null,
     status: 'ACTIVE'
   })
 }
@@ -281,7 +281,7 @@ function openEdit(row) {
     room: row.room || '',
     communityId: row.communityId || 1,
     role: row.role,
-    groupId: row.groupId || null,
+    teamId: row.teamId || row.groupId || null,
     status: row.status
   })
   dialogVisible.value = true
@@ -299,7 +299,7 @@ async function handleSubmit() {
     room: form.room,
     communityId: form.communityId,
     role: form.role,
-    groupId: isRepairerRole.value ? form.groupId : null,
+    teamId: isRepairerRole.value ? form.teamId : null,
     status: form.status
   }
   submitting.value = true

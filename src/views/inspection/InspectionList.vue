@@ -5,26 +5,35 @@
       <el-tab-pane label="巡检计划" name="plans">
         <div class="toolbar">
           <el-button v-if="isAdmin" type="primary" @click="openPlanCreate">新建计划</el-button>
-          <el-input v-model="planKeyword" placeholder="计划名称" clearable style="width: 190px" @change="loadPlans" />
-          <span class="sub">计划生成任务后按点位模板逐项录入结果；异常点位自动转工单</span>
+          <el-select v-model="planQuery.status" clearable placeholder="全部状态" style="width: 130px" @change="loadPlans">
+            <el-option label="启用" value="ENABLED" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+          <el-button @click="loadPlans">刷新</el-button>
+          <span class="sub">同小区仅允许一个启用中的巡检计划；生成任务按频率与值班持证分配</span>
         </div>
         <ListError :failed="loadError" :loading="planLoading" @retry="reloadAll" />
         <el-table v-if="!loadError" v-loading="planLoading" :data="plans">
           <el-table-column prop="planName" label="计划名称" min-width="160" />
-          <el-table-column label="电梯类型" width="110">
-            <template #default="{ row }">{{ ELEVATOR_TYPE_MAP[row.elevatorType] || '全部' }}</template>
+          <el-table-column prop="branchName" label="小区" width="130" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.branchName || '—' }}</template>
           </el-table-column>
-          <el-table-column label="频率" width="100">
-            <template #default="{ row }">{{ CYCLE_TYPE_MAP[row.cycleType] || row.cycleType }}</template>
+          <el-table-column label="频率" width="90">
+            <template #default="{ row }">{{ INSPECTION_FREQUENCY_MAP[row.frequency] || row.frequency }}</template>
           </el-table-column>
-          <el-table-column label="有效期" width="200">
+          <el-table-column label="执行时间" width="100">
+            <template #default="{ row }">{{ row.frequencyTime || '任意' }}</template>
+          </el-table-column>
+          <el-table-column prop="templateName" label="点位模板" min-width="130" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.templateName || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="有效期" width="190">
             <template #default="{ row }">{{ row.effectiveFrom || '—' }} ~ {{ row.effectiveTo || '长期' }}</template>
           </el-table-column>
-          <el-table-column prop="taskCount" label="已生成任务" width="110" />
           <el-table-column label="状态" width="90">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-                {{ row.status === 'ACTIVE' ? '启用' : '停用' }}
+              <el-tag :type="row.status === 'ENABLED' ? 'success' : 'info'" size="small">
+                {{ row.status === 'ENABLED' ? '启用' : '停用' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -35,6 +44,14 @@
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          class="pagination"
+          v-model:current-page="planQuery.page"
+          v-model:page-size="planQuery.pageSize"
+          :total="planTotal"
+          layout="total, prev, pager, next"
+          @current-change="loadPlans"
+        />
       </el-tab-pane>
 
       <!-- 巡检任务 -->
@@ -51,7 +68,7 @@
             </el-select>
           </el-form-item>
           <el-form-item label="逾期">
-            <el-checkbox v-model="taskQuery.overdue">仅看逾期/漏巡</el-checkbox>
+            <span class="sub">漏巡/逾期任务由状态与计划时间标识</span>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="loadTasks">查询</el-button>
@@ -122,32 +139,63 @@
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 计划编辑 -->
+    <!-- 计划编辑（字段对齐 BOP90/92） -->
     <el-dialog v-model="planVisible" :title="planEdit ? '编辑巡检计划' : '新建巡检计划'" width="520px">
       <el-form label-width="100px">
+        <el-form-item label="小区" required>
+          <el-select v-model="planForm.branchId" style="width: 100%">
+            <el-option v-for="c in communities" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="计划名称" required>
           <el-input v-model="planForm.planName" />
         </el-form-item>
-        <el-form-item label="电梯类型">
-          <el-select v-model="planForm.elevatorType" clearable placeholder="全部" style="width: 100%">
+        <el-form-item label="频率" required>
+          <el-select v-model="planForm.frequency" style="width: 100%">
             <el-option
-              v-for="o in ELEVATOR_TYPE_OPTIONS"
-              :key="o.value"
-              :label="o.label"
-              :value="o.value"
+              v-for="(label, value) in INSPECTION_FREQUENCY_MAP"
+              :key="value"
+              :label="label"
+              :value="value"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="频率">
-          <el-select v-model="planForm.cycleType" style="width: 100%">
-            <el-option v-for="o in CYCLE_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+        <el-form-item label="执行时间">
+          <el-time-select
+            v-model="planForm.frequencyTime"
+            start="06:00"
+            end="22:00"
+            step="00:30"
+            clearable
+            placeholder="留空表示当日任意"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="点位模板" required>
+          <el-select v-model="planForm.pointTemplateId" style="width: 100%" placeholder="选择启用中的模板">
+            <el-option
+              v-for="t in templates"
+              :key="t.id"
+              :label="`${t.templateName}（${ELEVATOR_TYPE_MAP[t.elevatorType] || '全部'}）`"
+              :value="t.id"
+              :disabled="t.status !== 'ACTIVE'"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="生效日期">
+        <el-form-item label="生效日期" required>
           <el-date-picker v-model="planForm.effectiveFrom" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="planForm.status" active-value="ACTIVE" inactive-value="DISABLED" />
+        <el-form-item label="结束日期">
+          <el-date-picker v-model="planForm.effectiveTo" type="date" value-format="YYYY-MM-DD" placeholder="留空表示长期" />
+        </el-form-item>
+        <el-form-item label="自动生成">
+          <el-switch v-model="planForm.autoGenerate" />
+        </el-form-item>
+        <el-form-item v-if="planEdit" label="状态">
+          <el-switch v-model="planForm.status" active-value="ENABLED" inactive-value="DISABLED" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="planForm.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -317,12 +365,12 @@ import {
   createPointTemplate
 } from '@/api/inspection'
 import ListError from '@/components/ListError.vue'
+import { getCommunities } from '@/api/basedata'
 import { useUserStore } from '@/stores/user'
 import {
   ELEVATOR_TYPE_MAP,
   ELEVATOR_TYPE_OPTIONS,
-  CYCLE_TYPE_MAP,
-  CYCLE_TYPE_OPTIONS,
+  INSPECTION_FREQUENCY_MAP,
   INSPECTION_STATUS_MAP,
   INSPECTION_STATUS_TAG,
   POINT_RESULT_MAP,
@@ -341,12 +389,14 @@ const submitting = ref(false)
 const planLoading = ref(false)
 const loadError = ref(false)
 const plans = ref([])
-const planKeyword = ref('')
+const planTotal = ref(0)
+const planQuery = reactive({ page: 1, pageSize: 20, status: '' })
+const communities = ref([])
 
 const taskLoading = ref(false)
 const tasks = ref([])
 const taskTotal = ref(0)
-const taskQuery = reactive({ page: 1, pageSize: 20, status: '', overdue: false })
+const taskQuery = reactive({ page: 1, pageSize: 20, status: '' })
 
 const templateLoading = ref(false)
 const templates = ref([])
@@ -356,10 +406,15 @@ const planEdit = ref(false)
 const planId = ref(null)
 const planForm = reactive({
   planName: '',
-  elevatorType: '',
-  cycleType: 'QUARTERLY',
+  branchId: null,
+  frequency: 'MONTHLY',
+  frequencyTime: '',
+  pointTemplateId: null,
   effectiveFrom: '',
-  status: 'ACTIVE'
+  effectiveTo: '',
+  autoGenerate: true,
+  status: 'ENABLED',
+  remark: ''
 })
 
 const generateVisible = ref(false)
@@ -385,8 +440,13 @@ const templatePoints = ref([])
 async function loadPlans() {
   planLoading.value = true
   try {
-    const data = await getInspectionPlans({ keyword: planKeyword.value || undefined })
-    plans.value = data.list || data
+    const data = await getInspectionPlans({
+      page: planQuery.page,
+      pageSize: planQuery.pageSize,
+      status: planQuery.status || undefined
+    })
+    plans.value = data.list
+    planTotal.value = data.total
     loadError.value = false
   } catch (e) {
     loadError.value = true
@@ -407,8 +467,7 @@ async function loadTasks() {
     const data = await getInspectionTasks({
       page: taskQuery.page,
       pageSize: taskQuery.pageSize,
-      status: taskQuery.status || undefined,
-      overdue: taskQuery.overdue ? true : undefined
+      status: taskQuery.status || undefined
     })
     tasks.value = data.list
     taskTotal.value = data.total
@@ -423,8 +482,7 @@ async function loadTasks() {
 async function loadTemplates() {
   templateLoading.value = true
   try {
-    const data = await getPointTemplates()
-    templates.value = data.list || data
+    templates.value = await getPointTemplates()
     loadError.value = false
   } catch (e) {
     loadError.value = true
@@ -438,10 +496,15 @@ function openPlanCreate() {
   planId.value = null
   Object.assign(planForm, {
     planName: '',
-    elevatorType: '',
-    cycleType: 'QUARTERLY',
-    effectiveFrom: '',
-    status: 'ACTIVE'
+    branchId: communities.value[0]?.id || null,
+    frequency: 'MONTHLY',
+    frequencyTime: '',
+    pointTemplateId: null,
+    effectiveFrom: new Date().toISOString().slice(0, 10),
+    effectiveTo: '',
+    autoGenerate: true,
+    status: 'ENABLED',
+    remark: ''
   })
   planVisible.value = true
 }
@@ -451,23 +514,52 @@ function openPlanEdit(row) {
   planId.value = row.id
   Object.assign(planForm, {
     planName: row.planName,
-    elevatorType: row.elevatorType || '',
-    cycleType: row.cycleType || 'QUARTERLY',
+    branchId: row.branchId || null,
+    frequency: row.frequency || 'MONTHLY',
+    frequencyTime: row.frequencyTime || '',
+    pointTemplateId: row.pointTemplateId || null,
     effectiveFrom: row.effectiveFrom || '',
-    status: row.status
+    effectiveTo: row.effectiveTo || '',
+    autoGenerate: !!row.autoGenerate,
+    status: row.status || 'ENABLED',
+    remark: row.remark || ''
   })
   planVisible.value = true
 }
 
 async function submitPlan() {
+  if (!planForm.branchId) {
+    notify.warning('请选择小区')
+    return
+  }
   if (!planForm.planName) {
     notify.warning('请填写计划名称')
     return
   }
+  if (!planForm.pointTemplateId) {
+    notify.warning('请选择点位模板')
+    return
+  }
+  if (!planForm.effectiveFrom) {
+    notify.warning('请选择生效日期')
+    return
+  }
+  const payload = {
+    branchId: planForm.branchId,
+    planName: planForm.planName,
+    frequency: planForm.frequency,
+    frequencyTime: planForm.frequencyTime || undefined,
+    pointTemplateId: planForm.pointTemplateId,
+    effectiveFrom: planForm.effectiveFrom,
+    effectiveTo: planForm.effectiveTo || undefined,
+    autoGenerate: planForm.autoGenerate,
+    remark: planForm.remark || undefined
+  }
+  if (planEdit.value) payload.status = planForm.status
   submitting.value = true
   try {
-    if (planEdit.value) await updateInspectionPlan(planId.value, planForm)
-    else await createInspectionPlan(planForm)
+    if (planEdit.value) await updateInspectionPlan(planId.value, payload)
+    else await createInspectionPlan(payload)
     notify.success('保存成功')
     planVisible.value = false
     loadPlans()
@@ -501,8 +593,12 @@ async function submitGenerate() {
 }
 
 async function openTask(row) {
-  current.value = await getInspectionTask(row.id)
-  taskVisible.value = true
+  try {
+    current.value = await getInspectionTask(row.id)
+    taskVisible.value = true
+  } catch (e) {
+    // 1001/1002 由拦截器提示
+  }
 }
 
 // 客服工作台「去处理」带 taskId 直达详情
@@ -579,10 +675,11 @@ async function submitTemplate() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadPlans()
   loadTasks()
   loadTemplates()
+  communities.value = await getCommunities().catch(() => [])
   if (route.query.taskId) {
     openTaskById(route.query.taskId).catch(() => notify.error('巡检任务加载失败'))
   }

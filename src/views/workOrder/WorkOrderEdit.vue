@@ -162,16 +162,32 @@ function onTypeChange() {
   if (!requireElevator.value) form.elevatorId = null
 }
 
+// 值班表接口要求 startDate/endDate 必填且区间 ≤31 天：取本月剩余 + 下月
+function dutyRanges() {
+  const now = new Date()
+  const fmt = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const nextStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const nextEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+  return [
+    { startDate: fmt(now), endDate: fmt(monthEnd) },
+    { startDate: fmt(nextStart), endDate: fmt(nextEnd) }
+  ]
+}
+
 onMounted(async () => {
   // 字典加载失败只降级为空，不阻断页面与编辑回填
-  const [cs, es, ds] = await Promise.all([
+  const [cs, es, dutyLists] = await Promise.all([
     getCommunities().catch(() => []),
-    getElevators().catch(() => []),
-    getDutySchedules({ month: new Date().toISOString().slice(0, 7) }).catch(() => [])
+    getElevators({ page: 1, pageSize: 100 }).catch(() => ({ list: [] })),
+    Promise.all(dutyRanges().map((r) => getDutySchedules(r).catch(() => [])))
   ])
   communities.value = cs
   elevators.value = Array.isArray(es) ? es : es?.list || []
-  dutyDates.value = (Array.isArray(ds) ? ds : ds?.list || []).map((d) => d.date)
+  dutyDates.value = Array.from(new Set(dutyLists.flat().map((d) => d.dutyDate || d.date))).filter(
+    Boolean
+  )
   if (!isEdit.value && cs.length) form.communityId = cs[0].id
 
   if (isEdit.value) {

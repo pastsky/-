@@ -156,16 +156,25 @@ function renderType() {
 }
 
 async function loadTrend() {
-  trend.value = await getStatsTrend({ granularity: granularity.value })
-  renderTrend()
+  try {
+    trend.value = await getStatsTrend({ granularity: granularity.value })
+    renderTrend()
+  } catch (e) {
+    trend.value = { labels: [], created: [], completed: [] }
+    renderTrend()
+  }
 }
 
 async function loadData() {
-  overview.value = await getStatsOverview()
-  typeDist.value = await getTypeDistribution()
-  performance.value = await getEngineerPerformance()
-  renderType()
-  await loadTrend()
+  try {
+    overview.value = await getStatsOverview()
+    typeDist.value = await getTypeDistribution()
+    performance.value = await getEngineerPerformance()
+    renderType()
+    await loadTrend()
+  } catch (e) {
+    // 具体错误由请求拦截器提示
+  }
 }
 
 function handleResize() {

@@ -151,6 +151,22 @@ test('客服回访满意后归档', async ({ page }) => {
   await expect(page.locator('.el-card').first()).toContainText('已关闭')
 })
 
+test('工单池只展示池 VO 字段且未抢单不可进详情', async ({ page }) => {
+  await loginAs(page, 'engineer')
+  await page.getByRole('menuitem', { name: '工单池' }).click()
+  await page.waitForURL(/\/work-orders\/pool$/)
+
+  const body = page.locator('.el-table__body-wrapper')
+  await expect(body).toContainText('3栋2单元水管漏水')
+  // 池 VO 不含报修人姓名与手机号
+  await expect(body).not.toContainText('13800000005')
+  await expect(body).not.toContainText('张三')
+
+  // 未抢单的池单不跳详情（后端必然 1002）
+  await body.getByText('3栋2单元水管漏水').click()
+  await expect(page).toHaveURL(/\/work-orders\/pool$/)
+})
+
 test('工单池抢单：在途校验与抢单成功', async ({ page }) => {
   // 李师傅名下已有在途工单，抢单应被拒
   await loginAs(page, 'engineer')
@@ -472,5 +488,54 @@ test('全页面巡检：无运行时报错', async ({ page }) => {
 test('路由权限拦截：业主访问 /users 被重定向', async ({ page }) => {
   await loginAs(page, 'resident')
   await page.goto('/users')
+  await expect(page).toHaveURL(/\/work-orders$/)
+})
+
+test('工单列表排序使用 sortField/sortOrder', async ({ page }) => {
+  await loginAs(page, 'admin')
+  await expect(page.locator('.el-pagination__total')).toContainText('共')
+  const sortRequest = page.waitForRequest(
+    (r) => r.url().includes('/api/work-orders?') && r.url().includes('sortOrder=asc'),
+    { timeout: 8000 }
+  )
+  await page.locator('th').filter({ hasText: '创建时间' }).click()
+  const req = await sortRequest
+  const url = new URL(req.url())
+  expect(url.searchParams.get('sortField')).toBe('created_at')
+  expect(url.searchParams.get('sortOrder')).toBe('asc')
+})
+
+test('多角色页面巡检：无控制台错误', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console: ${m.text()}`)
+  })
+
+  const sweeps = [
+    {
+      key: 'cs',
+      paths: ['/dispatch', '/work-orders', '/elevators', '/maintenance', '/inspection', '/certificates', '/feedback', '/stats', '/exports', '/broadcast', '/calendar']
+    },
+    { key: 'engineer', paths: ['/work-orders', '/work-orders/pool', '/calendar', '/elevators'] },
+    { key: 'resident', paths: ['/work-orders', '/work-orders/create'] }
+  ]
+
+  for (const sweep of sweeps) {
+    await loginAs(page, sweep.key)
+    for (const path of sweep.paths) {
+      await page.goto(path)
+      await page.waitForTimeout(400)
+      await expect(page.locator('.layout').first()).toBeVisible()
+    }
+  }
+
+  const meaningful = errors.filter((e) => !/Failed to load resource|favicon|net::ERR/.test(e))
+  expect(meaningful).toEqual([])
+})
+
+test('路由权限拦截：维修工访问客服工作台被重定向', async ({ page }) => {
+  await loginAs(page, 'engineer')
+  await page.goto('/dispatch')
   await expect(page).toHaveURL(/\/work-orders$/)
 })

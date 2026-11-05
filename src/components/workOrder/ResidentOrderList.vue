@@ -214,12 +214,16 @@ async function handleUrge(row) {
   } catch (e) {
     return
   }
-  await createFeedback({
-    orderId: row.id,
-    content: `【催单】工单 ${row.orderNo}：${row.title}`,
-    images: []
-  })
-  notify.success('已发送催单提醒，客服会尽快跟进')
+  try {
+    await createFeedback({
+      orderId: row.id,
+      content: `【催单】工单 ${row.orderNo}：${row.title}`,
+      images: []
+    })
+    notify.success('已发送催单提醒，客服会尽快跟进')
+  } catch (e) {
+    // 失败原因由请求拦截器提示
+  }
 }
 
 async function openNotices() {

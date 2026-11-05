@@ -84,6 +84,7 @@
       :row-class-name="rowClass"
       @row-click="goDetail"
       @selection-change="onSelectionChange"
+      @sort-change="handleSortChange"
     >
       <el-table-column v-if="canBatch" type="selection" width="46" />
       <el-table-column prop="orderNo" label="工单号" width="150" />
@@ -100,7 +101,7 @@
       <el-table-column label="类型" width="80">
         <template #default="{ row }">{{ WORK_ORDER_TYPE_MAP[row.type] }}</template>
       </el-table-column>
-      <el-table-column label="优先级" width="86">
+      <el-table-column prop="priority" label="优先级" width="86" sortable="custom">
         <template #default="{ row }">
           <el-tag :type="WORK_ORDER_PRIORITY_TAG[row.priority]" size="small">
             {{ WORK_ORDER_PRIORITY_MAP[row.priority] }}
@@ -114,7 +115,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="预约时间" width="160">
+      <el-table-column prop="appointmentTime" label="预约时间" width="160" sortable="custom">
         <template #default="{ row }">
           <span :class="{ 'muted': !row.appointmentTime }">{{ formatAppointment(row.appointmentTime) }}</span>
         </template>
@@ -122,7 +123,7 @@
       <el-table-column prop="location" label="位置" width="120" show-overflow-tooltip />
       <el-table-column prop="reporterName" label="报修人" width="90" />
       <el-table-column prop="assigneeName" label="处理人" width="90" />
-      <el-table-column prop="createdAt" label="创建时间" width="165" />
+      <el-table-column prop="createdAt" label="创建时间" width="165" sortable="custom" />
       <el-table-column label="操作" width="76" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click.stop="goDetail(row)">详情</el-button>
@@ -186,7 +187,9 @@ const query = reactive({
   poolFlag: '',
   keyword: '',
   escalated: false,
-  overdue: false
+  overdue: false,
+  sortField: 'created_at',
+  sortOrder: 'desc'
 })
 
 // 后端 POST /work-orders 仅 RESIDENT
@@ -214,8 +217,31 @@ function buildParams() {
     escalated: query.escalated ? 'true' : undefined,
     overdue: query.overdue ? 'true' : undefined,
     startDate: dateRange.value?.[0] || undefined,
-    endDate: dateRange.value?.[1] || undefined
+    endDate: dateRange.value?.[1] || undefined,
+    // 契约排序参数：sortField/sortOrder，白名单见 SORT_FIELD_MAP
+    sortField: query.sortField,
+    sortOrder: query.sortOrder
   }
+}
+
+// 工单列表排序白名单：created_at|priority|updated_at|appointment_time|review_time
+const SORT_FIELD_MAP = {
+  createdAt: 'created_at',
+  priority: 'priority',
+  appointmentTime: 'appointment_time'
+}
+
+function handleSortChange({ prop, order }) {
+  const field = SORT_FIELD_MAP[prop]
+  if (!order || !field) {
+    query.sortField = 'created_at'
+    query.sortOrder = 'desc'
+  } else {
+    query.sortField = field
+    query.sortOrder = order === 'ascending' ? 'asc' : 'desc'
+  }
+  query.page = 1
+  loadData()
 }
 
 async function loadData() {
@@ -284,25 +310,29 @@ function onSelectionChange(rows) {
 
 async function handleBatch(action) {
   const label = action === 'pool' ? '入池' : '取消'
-  const { value } = await ElMessageBox.prompt(`请输入批量${label}原因`, `批量${label}`, {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
-  })
-  const orderIds = selection.value.map((r) => r.id)
-  const result =
-    action === 'pool'
-      ? await batchToPool({ orderIds, reason: value })
-      : await batchCancel({ orderIds, reason: value })
-  if (result.failureCount) {
-    ElMessageBox.alert(
-      (result.failures || []).map((f) => `#${f.orderId}：${f.message}（${f.code}）`).join('\n'),
-      `失败 ${result.failureCount} 条`,
-      { type: 'warning' }
-    )
+  try {
+    const { value } = await ElMessageBox.prompt(`请输入批量${label}原因`, `批量${label}`, {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValidator: (v) => (v && v.trim() ? true : '原因不能为空')
+    })
+    const orderIds = selection.value.map((r) => r.id)
+    const result =
+      action === 'pool'
+        ? await batchToPool({ orderIds, reason: value })
+        : await batchCancel({ orderIds, reason: value })
+    if (result.failureCount) {
+      ElMessageBox.alert(
+        (result.failures || []).map((f) => `#${f.orderId}：${f.message}（${f.code}）`).join('\n'),
+        `失败 ${result.failureCount} 条`,
+        { type: 'warning' }
+      )
+    }
+    notify.success(`成功 ${result.successCount} 条`)
+    loadData()
+  } catch (e) {
+    // 取消输入或业务失败由拦截器提示
   }
-  notify.success(`成功 ${result.successCount} 条`)
-  loadData()
 }
 
 onMounted(() => {

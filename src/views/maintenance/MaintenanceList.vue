@@ -33,6 +33,14 @@
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          class="pagination"
+          v-model:current-page="planQuery.page"
+          v-model:page-size="planQuery.pageSize"
+          :total="planTotal"
+          layout="total, prev, pager, next"
+          @current-change="loadPlans"
+        />
       </el-tab-pane>
 
       <!-- 维保任务 -->
@@ -319,6 +327,8 @@ const engineers = ref([])
 const planLoading = ref(false)
 const loadError = ref(false)
 const plans = ref([])
+const planTotal = ref(0)
+const planQuery = reactive({ page: 1, pageSize: 20 })
 const planKeyword = ref('')
 
 const taskLoading = ref(false)
@@ -359,8 +369,13 @@ const rejectReason = ref('')
 async function loadPlans() {
   planLoading.value = true
   try {
-    const data = await getMaintenancePlans({ keyword: planKeyword.value || undefined })
-    plans.value = data.list || data
+    const data = await getMaintenancePlans({
+      page: planQuery.page,
+      pageSize: planQuery.pageSize,
+      keyword: planKeyword.value || undefined
+    })
+    plans.value = data.list
+    planTotal.value = data.total
     loadError.value = false
   } catch (e) {
     loadError.value = true
@@ -466,8 +481,12 @@ async function submitGenerate() {
 }
 
 async function openTask(row) {
-  current.value = await getMaintenanceTask(row.id)
-  taskVisible.value = true
+  try {
+    current.value = await getMaintenanceTask(row.id)
+    taskVisible.value = true
+  } catch (e) {
+    // 1001/1002 由拦截器提示
+  }
 }
 
 // 客服工作台「去处理」带 taskId 直达详情

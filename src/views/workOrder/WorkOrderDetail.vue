@@ -168,7 +168,7 @@
     <el-dialog v-model="assignVisible" title="派单" width="760px">
       <el-form label-width="88px">
         <el-form-item label="班组">
-          <el-select v-model="assignForm.groupId" clearable placeholder="全部班组" style="width: 220px" @change="loadEngineers">
+          <el-select v-model="assignForm.teamId" clearable placeholder="全部班组" style="width: 220px" @change="loadEngineers">
             <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
           <span class="sub">不选班组则全局选人</span>
@@ -519,7 +519,7 @@ const rateVisible = ref(false)
 const remarkVisible = ref(false)
 const forceVisible = ref(false)
 
-const assignForm = reactive({ assigneeId: null, groupId: null, priority: '', remark: '', toPool: false })
+const assignForm = reactive({ assigneeId: null, teamId: null, priority: '', remark: '', toPool: false })
 const returnForm = reactive({ remark: '' })
 const transferForm = reactive({ targetAssigneeId: null, reason: '' })
 const completeForm = reactive({ remark: '' })
@@ -574,7 +574,10 @@ const canRate = computed(
     !detail.value.rating &&
     isReporter.value
 )
-const canRemark = computed(() => isStaff.value || isRepairer.value)
+// 内部备注：CS/ADMIN 或本单维修工；归档态只读
+const canRemark = computed(
+  () => !archived.value && (isStaff.value || (isRepairer.value && isAssignee.value))
+)
 // 兜底改单：仅 3 对状态（PROCESSING→ASSIGNED / PROCESSING→COMPLETED / PENDING→CANCELED）
 const forceTargets = computed(() => FORCE_STATUS_MATRIX[status.value] || [])
 const canForce = computed(
@@ -617,13 +620,15 @@ async function loadDetail() {
   try {
     detail.value = await getWorkOrderDetail(id)
     logList.value = await getWorkOrderLogs(id)
+  } catch (e) {
+    // 1001/3001/1002 由拦截器提示，页面保持上一状态
   } finally {
     loading.value = false
   }
 }
 
 async function loadEngineers() {
-  engineers.value = await getEngineers(assignForm.groupId ? { groupId: assignForm.groupId } : {})
+  engineers.value = await getEngineers(assignForm.teamId ? { teamId: assignForm.teamId } : {})
 }
 
 async function loadGroups() {
@@ -636,7 +641,7 @@ function goEdit() {
 
 async function openAssign() {
   assignForm.assigneeId = null
-  assignForm.groupId = null
+  assignForm.teamId = null
   assignForm.priority = ''
   assignForm.remark = ''
   assignForm.toPool = false

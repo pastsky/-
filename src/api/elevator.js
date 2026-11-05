@@ -1,7 +1,9 @@
 import request from '@/utils/request'
+import { unwrapPage } from '@/utils/unwrap'
 
-export function getElevatorList(params) {
-  return request.get('/elevators', { params })
+// 分页：{list,total,page,pageSize}
+export async function getElevatorList(params) {
+  return unwrapPage(await request.get('/elevators', { params }))
 }
 
 export function getElevatorDetail(id) {
@@ -20,9 +22,10 @@ export function deleteElevator(id) {
   return request.delete(`/elevators/${id}`)
 }
 
-// tab = WORK_ORDER | MAINTENANCE | INSPECTION
-export function getElevatorProfile(id, params) {
-  return request.get(`/elevators/${id}/profile`, { params })
+// tab = WORK_ORDER | MAINTENANCE | INSPECTION；返回 {tab,list,total,page,pageSize}
+export async function getElevatorProfile(id, params) {
+  const data = await request.get(`/elevators/${id}/profile`, { params })
+  return { ...data, list: Array.isArray(data?.list) ? data.list : [] }
 }
 
 export function importElevators(file) {
@@ -33,6 +36,7 @@ export function importElevators(file) {
   })
 }
 
+// 文件流：返回 { blob, filename }
 export function downloadElevatorTemplate() {
   return request.get('/elevators/import-template', { responseType: 'blob' })
 }

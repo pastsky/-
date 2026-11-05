@@ -204,13 +204,18 @@ async function handleCreate() {
 }
 
 async function handleDownload(row) {
-  const blob = await downloadExport(row.id)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${row.jobNo}.${extOf(row.format)}`
-  a.click()
-  URL.revokeObjectURL(url)
+  try {
+    // 文件名优先取 Content-Disposition，回退 jobNo + 格式扩展名
+    const { blob, filename } = await downloadExport(row.id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `${row.jobNo}.${extOf(row.format)}`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    // 1001/1002/3002 由拦截器提示
+  }
 }
 
 onMounted(loadList)

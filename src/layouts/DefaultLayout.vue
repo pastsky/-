@@ -76,7 +76,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { getNotificationList, markNotificationRead, markAllNotificationsRead } from '@/api/notification'
+import { getNotificationList, getUnreadCount, markNotificationRead, markAllNotificationsRead } from '@/api/notification'
 import { ROLE_MAP, NOTIFICATION_TYPE_MAP } from '@/utils/dict'
 
 const router = useRouter()
@@ -132,8 +132,9 @@ function isUrgentNotify(n) {
 }
 
 async function loadUnreadCount() {
-  const data = await getNotificationList({ page: 1, pageSize: 1, unreadOnly: true })
-  unreadCount.value = data.total
+  // BOP55 专用未读计数，避免拉列表
+  const data = await getUnreadCount()
+  unreadCount.value = data?.unreadCount ?? 0
 }
 
 async function openNotifications() {
@@ -142,7 +143,7 @@ async function openNotifications() {
   try {
     const data = await getNotificationList({ page: 1, pageSize: 50 })
     notifications.value = data.list
-    unreadCount.value = data.list.filter((n) => !n.isRead).length
+    loadUnreadCount()
   } finally {
     notifyLoading.value = false
   }

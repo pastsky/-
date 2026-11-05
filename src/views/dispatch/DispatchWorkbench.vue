@@ -24,7 +24,8 @@
           </div>
         </div>
       </template>
-      <el-table v-loading="loading" :data="overdueList" @row-click="openRow">
+      <ListError :failed="loadError" :loading="loading" @retry="loadAll" />
+      <el-table v-if="!loadError" v-loading="loading" :data="overdueList" @row-click="openRow">
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag size="small" :type="bizTag(row.bizType)">
@@ -79,6 +80,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getWorkbenchTodos, getWorkbenchOverdue } from '@/api/workbench'
 import { notify } from '@/utils/notify'
+import ListError from '@/components/ListError.vue'
 import {
   WORK_ORDER_STATUS_MAP,
   WORK_ORDER_STATUS_TAG,
@@ -96,6 +98,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const loading = ref(false)
+const loadError = ref(false)
 
 const cards = [
   { key: 'pendingAssignCount', label: '待派单', nav: { status: 'PENDING' } },
@@ -142,6 +145,7 @@ function openRow(row) {
 
 async function loadOverdue() {
   loading.value = true
+  loadError.value = false
   try {
     const data = await getWorkbenchOverdue({
       type: overdueType.value,
@@ -150,13 +154,20 @@ async function loadOverdue() {
     })
     overdueList.value = data.list
     total.value = data.total
+  } catch (e) {
+    loadError.value = true
+    overdueList.value = []
   } finally {
     loading.value = false
   }
 }
 
 async function loadAll() {
-  todos.value = await getWorkbenchTodos()
+  try {
+    todos.value = await getWorkbenchTodos()
+  } catch (e) {
+    todos.value = {}
+  }
   await loadOverdue()
 }
 

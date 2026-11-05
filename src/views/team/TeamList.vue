@@ -250,6 +250,8 @@ async function submitForm() {
     notify.success('保存成功')
     formVisible.value = false
     loadTeams()
+  } catch (e) {
+    // 1000/3002 由拦截器提示
   } finally {
     submitting.value = false
   }
@@ -270,10 +272,13 @@ async function handleDelete(row) {
 
 async function openMembers(row) {
   currentTeam.value = row
-  if (!engineers.value.length) engineers.value = await getEngineers()
-  const members = await getTeamMembers(row.id)
-  memberIds.value = members.map((m) => m.id)
-  memberVisible.value = true
+  try {
+    if (!engineers.value.length) engineers.value = await getEngineers()
+    memberIds.value = (await getTeamMembers(row.id)).map((m) => m.id)
+    memberVisible.value = true
+  } catch (e) {
+    // 错误提示由请求拦截器统一处理
+  }
 }
 
 async function submitMembers() {
@@ -283,6 +288,8 @@ async function submitMembers() {
     notify.success('成员已更新')
     memberVisible.value = false
     loadTeams()
+  } catch (e) {
+    // 1002/3002 由拦截器提示
   } finally {
     submitting.value = false
   }
@@ -301,6 +308,8 @@ async function loadAudit() {
     })
     auditList.value = data.list
     auditTotal.value = data.total
+  } catch (e) {
+    auditList.value = []
   } finally {
     auditLoading.value = false
   }

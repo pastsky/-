@@ -1,18 +1,23 @@
 // 内存态 mock 数据（模块单例，供所有 mock 接口共享读写）
 // 字段口径对齐 v1.0 增量设计：poolFlag / appointmentTime / source / escalationCount / finishImages
 
-export const communities = [
+// vite-plugin-mock 会把每个 mock 入口单独打包，data.js 会在各入口里各执行一次。
+// 用 globalThis 持有同一份内存数据，避免 index/increment/increment2 之间数据割裂。
+const MOCK_DB_KEY = '__PROPERTY_MOCK_DB__'
+const mockDb = globalThis[MOCK_DB_KEY]
+
+export const communities = mockDb?.communities ?? [
   { id: 1, name: '金桂园小区' },
   { id: 2, name: '银桦苑小区' }
 ]
 
-export const groups = [
+export const groups = mockDb?.groups ?? [
   { id: 1, name: '一班', communityId: 1 },
   { id: 2, name: '二班', communityId: 1 },
   { id: 3, name: '外委组', communityId: 2 }
 ]
 
-export const elevators = [
+export const elevators = mockDb?.elevators ?? [
   { id: 1, elevatorNo: 'JG-A1-01', branchId: 1, branchName: '金桂园小区', building: '1栋', unit: '1单元', location: '客梯厅', brand: '奥的斯', model: 'OTIS-3200', loadWeight: 1000, installDate: '2020-05-01', status: 'ACTIVE', inspectDate: '2026-01-10', nextInspectDate: '2026-12-20', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '' },
   { id: 2, elevatorNo: 'JG-A2-01', branchId: 1, branchName: '金桂园小区', building: '2栋', unit: '1单元', location: '客梯厅', brand: '三菱', model: 'MIT-1000', loadWeight: 800, installDate: '2019-08-15', status: 'MAINTENANCE', inspectDate: '2025-11-16', nextInspectDate: '2026-11-10', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '主机异响，检修中' },
   { id: 3, elevatorNo: 'JG-A3-01', branchId: 1, branchName: '金桂园小区', building: '3栋', unit: '2单元', location: '货梯厅', brand: '日立', model: 'HIT-2000', loadWeight: 1600, installDate: '2018-03-20', status: 'INACTIVE', inspectDate: '2025-10-20', nextInspectDate: '2026-10-28', inspectOrg: '市特种设备检验院', inspectCertUrl: '', remark: '已停用待拆除' },
@@ -20,7 +25,7 @@ export const elevators = [
 ]
 
 // 值班表：按班组排班（本系统不做排班界面，仅消费）
-export const dutySchedules = [
+export const dutySchedules = mockDb?.dutySchedules ?? [
   { id: 1, date: '2026-11-02', groupId: 1, communityId: 1 },
   { id: 2, date: '2026-11-03', groupId: 2, communityId: 1 },
   { id: 3, date: '2026-11-04', groupId: 1, communityId: 1 },
@@ -34,7 +39,7 @@ const cert = (tagCode, expireDate = '2027-12-31') => ({
   rejectCount: 0
 })
 
-export const users = [
+export const users = mockDb?.users ?? [
   { id: 1, username: 'admin', password: '123456', realName: '管理员', phone: '13800000001', email: 'admin@example.com', address: '', communityId: 1, building: '', room: '', role: 'ADMIN', groupId: null, onDuty: 1, certs: [], status: 'ACTIVE', createdAt: '2026-10-01 09:00:00', updatedAt: '2026-10-01 09:00:00' },
   { id: 2, username: 'cs001', password: '123456', realName: '客服小王', phone: '13800000002', email: 'cs@example.com', address: '', communityId: 1, building: '', room: '', role: 'CUSTOMER_SERVICE', groupId: null, onDuty: 1, certs: [], status: 'ACTIVE', createdAt: '2026-10-01 09:00:00', updatedAt: '2026-10-01 09:00:00' },
   { id: 3, username: 'engineer001', password: '123456', realName: '李师傅', phone: '13800000003', email: 'li@example.com', address: '', communityId: 1, building: '', room: '', role: 'ENGINEER', groupId: 1, onDuty: 1, certs: [cert('LIFT_CERT'), cert('ELECTRIC_CERT')], status: 'ACTIVE', createdAt: '2026-10-01 09:00:00', updatedAt: '2026-10-01 09:00:00' },
@@ -57,7 +62,7 @@ const base = {
   source: 'USER_REPORT'
 }
 
-export const workOrders = [
+export const workOrders = mockDb?.workOrders ?? [
   {
     ...base,
     id: 1, orderNo: 'WO202610280001', title: '3栋2单元水管漏水', description: '厨房水管接口处漏水严重',
@@ -165,7 +170,7 @@ export const workOrders = [
   }
 ]
 
-export const logs = {
+export const logs = mockDb?.logs ?? {
   1: [
     { id: 1, orderId: 1, operatorId: 5, action: 'CREATE', fromStatus: null, toStatus: 'PENDING', remark: '创建工单', reason: null, createdAt: '2026-10-28 09:30:00' },
     { id: 2, orderId: 1, operatorId: 2, action: 'RETURN', fromStatus: 'ASSIGNED', toStatus: 'PENDING', remark: '', reason: '维修工无电梯证，退回入池', createdAt: '2026-10-28 10:10:00' }
@@ -221,7 +226,7 @@ export const logs = {
   ]
 }
 
-export const notifications = [
+export const notifications = mockDb?.notifications ?? [
   { id: 1, userId: 3, title: '新工单待接单', content: '工单 WO202610280002 已派单给您，请及时处理', type: 'ASSIGNED', isRead: false, orderId: 2, createdAt: '2026-10-28 10:00:00' },
   { id: 2, userId: 5, title: '工单已完工', content: '工单 WO202610260001 已完工，请评价', type: 'COMPLETED', isRead: false, orderId: 5, createdAt: '2026-10-26 11:00:00' },
   { id: 3, userId: 6, title: '工单已派单', content: '工单 WO202610250001 已派单给李师傅', type: 'ASSIGNED', isRead: true, orderId: 6, createdAt: '2026-10-25 10:00:00' },
@@ -229,24 +234,42 @@ export const notifications = [
 ]
 
 // 已发送的广播记录
-export const broadcasts = [
+export const broadcasts = mockDb?.broadcasts ?? [
   { id: 1, senderId: 2, title: '11 月电梯年检安排', content: '各楼栋电梯年检将于 11 月 10 日进行，请提前告知业主', targetScope: 'ALL', targetRole: null, branchId: null, type: 'ANNOUNCEMENT', delivered: 9, createdAt: '2026-10-28 16:00:00' }
 ]
 
-let idSeq = 1000
-let orderSeq = 10
+if (!mockDb) {
+  globalThis[MOCK_DB_KEY] = {
+    communities,
+    groups,
+    elevators,
+    dutySchedules,
+    users,
+    workOrders,
+    logs,
+    notifications,
+    broadcasts,
+    seq: { id: 1000, order: 10 }
+  }
+}
+
+function seqState() {
+  return globalThis[MOCK_DB_KEY].seq
+}
 
 export function nextId() {
-  idSeq += 1
-  return idSeq
+  const seq = seqState()
+  seq.id += 1
+  return seq.id
 }
 
 export function genOrderNo() {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
   const ymd = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
-  orderSeq += 1
-  return `WO${ymd}-${String(orderSeq).padStart(4, '0')}`
+  const seq = seqState()
+  seq.order += 1
+  return `WO${ymd}-${String(seq.order).padStart(4, '0')}`
 }
 
 export function now() {

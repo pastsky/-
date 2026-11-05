@@ -37,9 +37,17 @@
       <template #header>
         <div class="card-header">
           <span>维修工绩效</span>
-          <el-button type="primary" size="small" @click="$router.push('/exports')">
-            打开导出中心
-          </el-button>
+          <div class="ops">
+            <el-select v-model="exportFormat" size="small" style="width: 110px">
+              <el-option label="EXCEL" value="EXCEL" />
+              <el-option label="CSV" value="CSV" />
+              <el-option label="PDF" value="PDF" />
+            </el-select>
+            <el-button type="primary" size="small" :loading="exporting" @click="handleExport">
+              导出统计报表
+            </el-button>
+            <el-button size="small" @click="$router.push('/exports')">导出中心</el-button>
+          </div>
         </div>
       </template>
       <el-table :data="performance">
@@ -67,6 +75,29 @@
         导出为异步任务：提交后由后台生成，完成后通过站内通知下发下载链接，链接保留 7 天。
       </div>
     </el-card>
+
+    <el-card class="section">
+      <template #header>
+        <span>班组统计（BOP119）</span>
+      </template>
+      <el-table :data="teamRows">
+        <el-table-column prop="teamName" label="班组" min-width="140">
+          <template #default="{ row }">{{ row.teamName || '未分组' }}</template>
+        </el-table-column>
+        <el-table-column prop="memberCount" label="成员数" width="100" />
+        <el-table-column prop="completedCount" label="完工单数" width="110" />
+        <el-table-column label="超时率" width="110">
+          <template #default="{ row }">
+            <el-tag :type="Number(row.timeoutRate) > 30 ? 'danger' : 'info'" size="small">
+              {{ row.timeoutRate ?? 0 }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="驳回率" width="110">
+          <template #default="{ row }">{{ row.rejectRate ?? 0 }}%</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
@@ -77,14 +108,20 @@ import {
   getStatsOverview,
   getStatsTrend,
   getTypeDistribution,
-  getEngineerPerformance
+  getEngineerPerformance,
+  exportStats
 } from '@/api/stats'
+import { getTeamPerformance } from '@/api/export'
+import { notify } from '@/utils/notify'
 import { WORK_ORDER_TYPE_MAP } from '@/utils/dict'
 
 const overview = ref({})
 const trend = ref({ labels: [], created: [], completed: [] })
 const typeDist = ref([])
 const performance = ref([])
+const teamRows = ref([])
+const exportFormat = ref('EXCEL')
+const exporting = ref(false)
 const granularity = ref('day')
 const trendRef = ref()
 const typeRef = ref()
@@ -170,10 +207,31 @@ async function loadData() {
     overview.value = await getStatsOverview()
     typeDist.value = await getTypeDistribution()
     performance.value = await getEngineerPerformance()
+    const team = await getTeamPerformance().catch(() => ({ list: [], ungrouped: null }))
+    teamRows.value = team.ungrouped ? [...team.list, { ...team.ungrouped, teamName: '未分组' }] : team.list
     renderType()
     await loadTrend()
   } catch (e) {
     // 具体错误由请求拦截器提示
+  }
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    // 兼容后端 /stats/export：按格式返回文件流，文件名取 Content-Disposition
+    const { blob, filename } = await exportStats({ format: exportFormat.value })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `统计报表.${exportFormat.value === 'EXCEL' ? 'xlsx' : exportFormat.value.toLowerCase()}`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify.success('导出已开始下载')
+  } catch (e) {
+    // 1000（格式矩阵不支持）由拦截器提示
+  } finally {
+    exporting.value = false
   }
 }
 

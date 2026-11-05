@@ -70,13 +70,15 @@ request.interceptors.response.use(
     }
     const code = res?.code
     const message = res?.message || '请求失败'
+    // skipErrorNotify：调用方按业务码自行提示（避免重复 toast）
+    const silent = response.config?.skipErrorNotify
     if (code === 2000 || code === 2002) {
-      notify.error(message)
+      if (!silent) notify.error(message)
       logoutToLogin()
     } else {
       // 1002 无权限 / 1001·3001 不存在 / 3000·3002 状态与规则 / 1000 参数
       // 一律直接展示后端 message，不做本地翻译、不做页面跳转
-      notify.error(message)
+      if (!silent) notify.error(message)
     }
     return Promise.reject(toBizError(code, message))
   },
@@ -88,20 +90,24 @@ request.interceptors.response.use(
     }
     const code = payload?.code
     const message = payload?.message || error.message || '请求失败'
+    const silent = error.config?.skipErrorNotify
+    const tip = (text) => {
+      if (!silent) notify.error(text)
+    }
 
     if (status === 401 || code === 2000 || code === 2002) {
-      notify.error(payload?.message || '登录已过期，请重新登录')
+      tip(payload?.message || '登录已过期，请重新登录')
       logoutToLogin()
     } else if (status === 403 || code === 1002) {
-      notify.error(payload?.message || '无权限执行该操作')
+      tip(payload?.message || '无权限执行该操作')
     } else if (status === 404 || code === 1001 || code === 3001 || code === 4000) {
-      notify.error(payload?.message || '资源不存在')
+      tip(payload?.message || '资源不存在')
     } else if (status === 409 || code === 3000 || code === 3002) {
-      notify.error(payload?.message || '当前状态不允许该操作')
+      tip(payload?.message || '当前状态不允许该操作')
     } else if (status === 400 || code === 1000) {
-      notify.error(payload?.message || '参数不合法')
+      tip(payload?.message || '参数不合法')
     } else {
-      notify.error(payload?.message || '请求失败')
+      tip(payload?.message || '请求失败')
     }
     return Promise.reject(toBizError(code, message))
   }

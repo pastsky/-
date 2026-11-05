@@ -108,6 +108,10 @@
         <el-button v-if="canAssign" type="primary" @click="openAssign">派单</el-button>
         <el-button v-if="canPushPool" @click="handlePushPool">推送入池</el-button>
         <el-button v-if="canAuditAppointment" @click="openAudit">审核预约</el-button>
+        <el-button v-if="canChangeAppointment" @click="openAppointment">改约</el-button>
+        <el-button v-if="canNoShow" @click="openNoShow">爽约登记</el-button>
+        <el-button v-if="canEscalate" type="danger" plain @click="openEscalate">升级/督办</el-button>
+        <el-button v-if="canMerge" @click="openMerge">合并重复单</el-button>
         <el-button v-if="canReturn" @click="openReturn">退回</el-button>
         <el-button v-if="canTransfer" @click="openTransfer">转交</el-button>
         <el-button v-if="canAccept" type="primary" @click="handleAccept">接单</el-button>
@@ -139,6 +143,21 @@
           · {{ WORK_ORDER_ACTION_MAP[log.action] || log.action }}
           <el-tag v-if="log.reason" size="small" type="info" class="log-reason">原因：{{ log.reason }}</el-tag>
           <span v-if="log.remark" class="sub">（{{ log.remark }}）</span>
+          <div v-if="log.images && log.images.length" class="images log-images">
+            <el-image
+              v-for="(img, j) in log.images"
+              :key="j"
+              :src="img"
+              :preview-src-list="log.images"
+              :initial-index="j"
+              fit="cover"
+              class="thumb small"
+            >
+              <template #error>
+                <div class="img-error"><el-icon><Picture /></el-icon><span>失效</span></div>
+              </template>
+            </el-image>
+          </div>
         </el-timeline-item>
       </el-timeline>
       <el-empty v-else description="暂无记录" />
@@ -149,13 +168,13 @@
         内部备注
         <span class="sub">（客服与维修工互见，业主不可见）</span>
       </template>
-      <div v-if="detail.remarks && detail.remarks.length" class="remark-list">
-        <div v-for="r in detail.remarks" :key="r.id" class="remark-item">
+      <div v-if="internalNotes.length" class="remark-list">
+        <div v-for="r in internalNotes" :key="r.id || r.createdAt" class="remark-item">
           <div class="remark-head">
             <b>{{ r.operatorName }}</b>
             <span class="sub">{{ r.createdAt }}</span>
           </div>
-          <div>{{ r.content }}</div>
+          <div>{{ r.remark }}</div>
           <div v-if="r.images && r.images.length" class="images">
             <el-image
               v-for="(img, i) in r.images"
@@ -292,12 +311,12 @@
             v-model:file-list="completeFiles"
             list-type="picture-card"
             :http-request="handleUpload"
-            :limit="6"
+            :limit="9"
             multiple
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
-          <div class="sub">完工必须上传至少 1 张现场照片（1~6 张），后端缺失时同样返回 1000</div>
+          <div class="sub">完工必须上传至少 1 张现场照片（1~9 张），缺失时返回 1000</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -460,6 +479,98 @@
         <el-button type="primary" :loading="submitting" @click="submitForce">确认改单</el-button>
       </template>
     </el-dialog>
+
+    <!-- 升级 / 督办 -->
+    <el-dialog v-model="escalateVisible" title="升级 / 督办" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="原因" required>
+          <el-input
+            v-model="escalateForm.reason"
+            type="textarea"
+            :rows="3"
+            placeholder="如：池中长时间无人接单、多次催办未响应"
+          />
+        </el-form-item>
+      </el-form>
+      <div class="sub">升级会累加升级级别与次数并写入流转日志；终态单可作线下督办记录</div>
+      <template #footer>
+        <el-button @click="escalateVisible = false">取消</el-button>
+        <el-button type="danger" :loading="submitting" @click="submitEscalate">确认升级</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 改约 -->
+    <el-dialog v-model="appointmentVisible" title="改约" width="480px">
+      <el-form label-width="96px">
+        <el-form-item label="新预约时间" required>
+          <el-date-picker
+            v-model="appointmentForm.appointmentTime"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            placeholder="选择新的上门时间"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="改约原因">
+          <el-input v-model="appointmentForm.reason" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <div v-if="appointmentLimit" class="sub">
+        业主当日改约/取消：{{ appointmentLimit.changeCount ?? '—' }} 次
+        <span v-if="appointmentLimit.locked">（已锁定，需客服解除）</span>
+      </div>
+      <template #footer>
+        <el-button @click="appointmentVisible = false">取消</el-button>
+        <el-button v-if="appointmentLimit?.locked && isStaff" type="warning" @click="releaseLimit">
+          解除频控
+        </el-button>
+        <el-button type="primary" :loading="submitting" @click="submitAppointment">保存改约</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 爽约登记 -->
+    <el-dialog v-model="noShowVisible" title="业主爽约登记" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="说明">
+          <el-input v-model="noShowForm.reason" type="textarea" :rows="3" placeholder="如：上门无人应答，电话未接通" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">爽约记录用于统计业主信用与预约频控，请如实登记</div>
+      <template #footer>
+        <el-button @click="noShowVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitNoShow">确认登记</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 合并重复单 -->
+    <el-dialog v-model="mergeVisible" title="合并重复工单" width="720px">
+      <div class="sub">从候选单中选择要合并进当前工单的重复单</div>
+      <el-table
+        v-loading="mergeLoading"
+        :data="mergeCandidates"
+        max-height="280"
+        highlight-current-row
+        @current-change="(row) => (mergeForm.sourceOrderId = row?.id || null)"
+      >
+        <el-table-column prop="orderNo" label="单号" width="160" />
+        <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">{{ WORK_ORDER_STATUS_MAP[row.status] || row.status }}</template>
+        </el-table-column>
+        <el-table-column prop="location" label="位置" width="130" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="创建时间" width="165" />
+      </el-table>
+      <el-empty v-if="!mergeLoading && !mergeCandidates.length" description="暂无重复候选单" :image-size="60" />
+      <el-form label-width="80px" class="merge-reason">
+        <el-form-item label="合并原因">
+          <el-input v-model="mergeForm.reason" type="textarea" :rows="2" placeholder="如：同一位置重复报修" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="mergeVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitMerge">确认合并</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -485,7 +596,15 @@ import {
   rateWorkOrder,
   auditAppointment,
   addInternalNote,
-  forceStatus
+  forceStatus,
+  escalateWorkOrder,
+  changeWorkOrderAppointment,
+  markWorkOrderNoShow,
+  mergeWorkOrder,
+  getDuplicateCandidates,
+  getAppointmentChangeLimit,
+  releaseAppointmentChangeLimit,
+  checkAppointmentConflict
 } from '@/api/workOrder'
 import { getEngineers, getGroups } from '@/api/user'
 import { uploadImage, compressImage } from '@/api/file'
@@ -518,6 +637,10 @@ const loading = ref(false)
 const submitting = ref(false)
 const detail = ref({})
 const logList = ref([])
+// 后端详情无 remarks 字段；内部备注以 INTERNAL_NOTE 日志承载（含 images）
+const internalNotes = computed(() =>
+  logList.value.filter((log) => log.action === 'INTERNAL_NOTE')
+)
 const engineers = ref([])
 const groupList = ref([])
 
@@ -531,6 +654,18 @@ const auditVisible = ref(false)
 const rateVisible = ref(false)
 const remarkVisible = ref(false)
 const forceVisible = ref(false)
+const escalateVisible = ref(false)
+const appointmentVisible = ref(false)
+const noShowVisible = ref(false)
+const mergeVisible = ref(false)
+const mergeLoading = ref(false)
+const mergeCandidates = ref([])
+const appointmentLimit = ref(null)
+
+const escalateForm = reactive({ reason: '' })
+const appointmentForm = reactive({ appointmentTime: '', reason: '' })
+const noShowForm = reactive({ reason: '' })
+const mergeForm = reactive({ sourceOrderId: null, reason: '' })
 
 const assignForm = reactive({ assigneeId: null, teamId: null, priority: '', remark: '', toPool: false })
 const returnForm = reactive({ remark: '' })
@@ -554,7 +689,7 @@ const isStaff = computed(() => ['CUSTOMER_SERVICE', 'ADMIN'].includes(role.value
 const isRepairer = computed(() => REPAIRER_ROLES.includes(role.value))
 const isAssignee = computed(() => detail.value.assignee?.id === userStore.currentUser?.id)
 const isReporter = computed(() => detail.value.reporter?.id === userStore.currentUser?.id)
-const archived = computed(() => ['CLOSED', 'CANCELED', 'ESCALATED_FINAL'].includes(status.value))
+const archived = computed(() => ['CLOSED', 'CANCELED'].includes(status.value))
 
 // 后端 PUT /work-orders/{id} 仅 RESIDENT、ADMIN
 const canEdit = computed(
@@ -604,6 +739,19 @@ const canCancel = computed(() => {
   return false
 })
 
+// 升级/督办：CS、ADMIN（终态单也可记录线下督办）
+const canEscalate = computed(() => isStaff.value)
+// 改约：客服/管理员或本单业主，非归档态
+const canChangeAppointment = computed(
+  () =>
+    (isStaff.value || (role.value === 'RESIDENT' && isReporter.value)) &&
+    ['PENDING', 'ASSIGNED', 'PROCESSING'].includes(status.value)
+)
+// 爽约登记：客服/管理员，已派单或处理中
+const canNoShow = computed(() => isStaff.value && ['ASSIGNED', 'PROCESSING'].includes(status.value))
+// 合并重复单：客服/管理员，非归档态
+const canMerge = computed(() => isStaff.value && !archived.value)
+
 const hasAction = computed(
   () =>
     canEdit.value ||
@@ -620,7 +768,11 @@ const hasAction = computed(
     canRate.value ||
     canRemark.value ||
     canForce.value ||
-    canCancel.value
+    canCancel.value ||
+    canEscalate.value ||
+    canChangeAppointment.value ||
+    canNoShow.value ||
+    canMerge.value
 )
 
 function isCertSufficient(row) {
@@ -789,10 +941,28 @@ async function submitComplete() {
   }
   submitting.value = true
   try {
-    await completeWorkOrder(id, { remark: completeForm.remark, images })
+    // 与后端 CompleteRequest 对齐：finishImages / finishRemark
+    await completeWorkOrder(
+      id,
+      { finishImages: images, finishRemark: completeForm.remark },
+      { skipErrorNotify: true }
+    )
     completeVisible.value = false
     notify.success('已完工，待回访')
-    loadDetail()
+    await loadDetail()
+  } catch (e) {
+    // 按业务码分支：状态已变更（重复完工/被他人变更）→ 提示后强制刷新，按钮自动消失
+    if (e.code === 3000 || e.code === 3002) {
+      completeVisible.value = false
+      notify.warning('该工单已完工，正在等待回访')
+      await loadDetail()
+    } else if (e.code === 1002) {
+      notify.error('无权限操作该工单')
+    } else if (e.code === 1000) {
+      notify.error('请上传完工照片')
+    } else {
+      notify.error(e.message || '完工提交失败')
+    }
   } finally {
     submitting.value = false
   }
@@ -975,6 +1145,148 @@ async function submitForce() {
   }
 }
 
+/* ============ 升级 / 改约 / 爽约 / 合并 ============ */
+function openEscalate() {
+  escalateForm.reason = ''
+  escalateVisible.value = true
+}
+
+async function submitEscalate() {
+  if (!escalateForm.reason.trim()) {
+    notify.warning('请填写升级/督办原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await escalateWorkOrder(id, { reason: escalateForm.reason })
+    notify.success('已升级并记录督办')
+    escalateVisible.value = false
+    loadDetail()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openAppointment() {
+  appointmentForm.appointmentTime = detail.value.appointmentTime || ''
+  appointmentForm.reason = ''
+  appointmentLimit.value = null
+  if (isStaff.value && detail.value.reporter?.id) {
+    appointmentLimit.value = await getAppointmentChangeLimit({
+      reporterId: detail.value.reporter.id
+    }).catch(() => null)
+  }
+  appointmentVisible.value = true
+}
+
+async function releaseLimit() {
+  if (!detail.value.reporter?.id) return
+  try {
+    await releaseAppointmentChangeLimit({ reporterId: detail.value.reporter.id })
+    appointmentLimit.value = { changeCount: 0, locked: false }
+    notify.success('已解除当日改约频控')
+  } catch (e) {
+    // 拦截器提示
+  }
+}
+
+async function submitAppointment() {
+  if (!appointmentForm.appointmentTime) {
+    notify.warning('请选择新的预约时间')
+    return
+  }
+  // 排期冲突提示：接口不可用时不影响改约
+  const conflict = await checkAppointmentConflict({
+    orderId: Number(id),
+    appointmentTime: appointmentForm.appointmentTime
+  }).catch(() => null)
+  const conflicted = conflict?.conflict || (conflict?.conflicts || []).length > 0
+  if (conflicted) {
+    try {
+      await ElMessageBox.confirm(
+        `该时段可能存在排期冲突${conflict.message ? '：' + conflict.message : ''}，仍要保存改约？`,
+        '排期冲突',
+        { type: 'warning' }
+      )
+    } catch (e) {
+      return
+    }
+  }
+  submitting.value = true
+  try {
+    await changeWorkOrderAppointment(id, {
+      appointmentTime: appointmentForm.appointmentTime,
+      reason: appointmentForm.reason || undefined
+    })
+    notify.success('改约成功')
+    appointmentVisible.value = false
+    loadDetail()
+  } catch (e) {
+    // 3000/3002（频控/冲突）由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openNoShow() {
+  noShowForm.reason = ''
+  noShowVisible.value = true
+}
+
+async function submitNoShow() {
+  submitting.value = true
+  try {
+    await markWorkOrderNoShow(id, { reason: noShowForm.reason || undefined })
+    notify.success('已登记业主爽约')
+    noShowVisible.value = false
+    loadDetail()
+  } catch (e) {
+    // 拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openMerge() {
+  mergeForm.sourceOrderId = null
+  mergeForm.reason = ''
+  mergeCandidates.value = []
+  mergeVisible.value = true
+  mergeLoading.value = true
+  try {
+    mergeCandidates.value = await getDuplicateCandidates({ orderId: Number(id) })
+  } catch (e) {
+    mergeCandidates.value = []
+  } finally {
+    mergeLoading.value = false
+  }
+}
+
+async function submitMerge() {
+  if (!mergeForm.sourceOrderId) {
+    notify.warning('请选择要合并的重复单')
+    return
+  }
+  submitting.value = true
+  try {
+    // 兼容后端 sourceOrderId / orderIds 两种合并入参
+    await mergeWorkOrder(id, {
+      sourceOrderId: mergeForm.sourceOrderId,
+      orderIds: [mergeForm.sourceOrderId],
+      reason: mergeForm.reason || undefined
+    })
+    notify.success('已合并重复工单')
+    mergeVisible.value = false
+    loadDetail()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
 onMounted(async () => {
   await loadDetail()
   // 维修工任务卡「上传照片并完工」直达完工弹窗
@@ -1045,6 +1357,12 @@ onMounted(async () => {
   color: var(--el-text-color-placeholder);
   background: var(--el-fill-color-light);
   border-radius: 6px;
+}
+.log-images {
+  margin-top: 6px;
+}
+.merge-reason {
+  margin-top: 12px;
 }
 .tag {
   margin-right: 4px;

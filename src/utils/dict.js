@@ -40,8 +40,7 @@ export const WORK_ORDER_STATUS_MAP = {
   COMPLETED: '已完工',
   PENDING_REVIEW: '待回访',
   CLOSED: '已关闭',
-  CANCELED: '已取消',
-  ESCALATED_FINAL: '升级终态'
+  CANCELED: '已取消'
 }
 
 export const WORK_ORDER_STATUS_TAG = {
@@ -51,8 +50,7 @@ export const WORK_ORDER_STATUS_TAG = {
   COMPLETED: 'success',
   PENDING_REVIEW: 'warning',
   CLOSED: 'info',
-  CANCELED: 'danger',
-  ESCALATED_FINAL: 'danger'
+  CANCELED: 'danger'
 }
 
 export const WORK_ORDER_STATUS_OPTIONS = Object.keys(WORK_ORDER_STATUS_MAP).map((value) => ({
@@ -61,7 +59,7 @@ export const WORK_ORDER_STATUS_OPTIONS = Object.keys(WORK_ORDER_STATUS_MAP).map(
 }))
 
 // 归档态：核心字段只读
-export const ARCHIVED_STATUS = ['CLOSED', 'CANCELED', 'ESCALATED_FINAL']
+export const ARCHIVED_STATUS = ['CLOSED', 'CANCELED']
 // 在途态：占用维修工并发额度
 export const UNFINISHED_STATUS = ['PENDING', 'ASSIGNED', 'PROCESSING', 'PENDING_REVIEW']
 
@@ -124,6 +122,10 @@ export const WORK_ORDER_ACTION_MAP = {
   CANCEL: '取消',
   RATE: '评价',
   REMARK: '内部备注',
+  INTERNAL_NOTE: '内部备注',
+  MERGE: '合并',
+  APPOINTMENT: '改约',
+  NO_SHOW: '爽约',
   ESCALATE: '超时升级'
 }
 

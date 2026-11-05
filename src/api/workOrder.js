@@ -23,8 +23,9 @@ export function acceptWorkOrder(id, data) {
   return request.post(`/work-orders/${id}/accept`, data)
 }
 
-export function completeWorkOrder(id, data) {
-  return request.post(`/work-orders/${id}/complete`, data)
+// 完工：后端 CompleteRequest 只认 finishImages / finishRemark
+export function completeWorkOrder(id, data, config) {
+  return request.post(`/work-orders/${id}/complete`, data, config)
 }
 
 export function closeWorkOrder(id, data) {
@@ -100,8 +101,40 @@ export async function getWorkOrderPool(params) {
 }
 
 // 全局搜索（客服工作台）
-export function globalSearch(params) {
-  return request.get('/work-orders/global-search', { params })
+export async function globalSearch(params) {
+  return unwrapPage(await request.get('/work-orders/global-search', { params }))
+}
+
+// 人工升级/督办（BOP104）
+export function escalateWorkOrder(id, data) {
+  return request.post(`/work-orders/${id}/escalate`, data)
+}
+
+// 改约：预约时间变更
+export function changeWorkOrderAppointment(id, data) {
+  return request.put(`/work-orders/${id}/appointment`, data)
+}
+
+// 业主爽约登记
+export function markWorkOrderNoShow(id, data) {
+  return request.post(`/work-orders/${id}/no-show`, data)
+}
+
+// 工单合并：把重复单合并到当前单
+export function mergeWorkOrder(id, data) {
+  return request.post(`/work-orders/${id}/merge`, data)
+}
+
+// 重复工单候选（合并数据来源）
+export async function getDuplicateCandidates(params) {
+  return unwrapList(
+    await request.get('/work-orders/pool/duplicate-candidates', { params })
+  )
+}
+
+// 预约冲突检测
+export function checkAppointmentConflict(params) {
+  return request.get('/appointments/conflict-check', { params })
 }
 
 // 批量操作：路径区分动作

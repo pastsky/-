@@ -191,13 +191,39 @@
           :initial-index="i"
           fit="cover"
           class="thumb"
-        />
+        >
+          <template #error>
+            <div class="img-error"><el-icon><Picture /></el-icon><span>图片失效</span></div>
+          </template>
+        </el-image>
       </div>
+
+      <el-divider content-position="left">流转记录</el-divider>
+      <el-timeline v-if="timelineList.length">
+        <el-timeline-item
+          v-for="(log, i) in timelineList"
+          :key="i"
+          :timestamp="log.createdAt"
+          placement="top"
+        >
+          <span class="log-op">{{ log.operatorName || '系统' }}</span>
+          · {{ log.actionLabel || log.action }}
+          <span v-if="log.remark" class="sub">（{{ log.remark }}）</span>
+          <span v-if="log.reason" class="sub"> 原因：{{ log.reason }}</span>
+        </el-timeline-item>
+      </el-timeline>
+      <el-empty v-else description="暂无流转记录" :image-size="60" />
 
       <template #footer>
         <div class="drawer-footer">
           <el-button @click="taskVisible = false">关闭</el-button>
           <el-button v-if="canWrite && current.status === 'PENDING'" @click="openAssign">指派</el-button>
+          <el-button
+            v-if="canWrite && current.poolFlag === 1 && current.status === 'PENDING'"
+            @click="openFromPool"
+          >
+            池内转派
+          </el-button>
           <el-button v-if="canWrite && current.status === 'PENDING'" @click="handleToPool">推入任务池</el-button>
           <el-button
             v-if="isAssignee && current.status === 'ASSIGNED'"
@@ -219,9 +245,59 @@
           <el-button v-if="canWrite && current.status === 'COMPLETED'" type="success" @click="handleConfirm">
             确认
           </el-button>
+          <el-button
+            v-if="(canWrite || isAssignee) && ['ASSIGNED', 'PROCESSING'].includes(current.status)"
+            @click="openTransfer"
+          >
+            转交
+          </el-button>
+          <el-button
+            v-if="canWrite && !['COMPLETED', 'CANCELED'].includes(current.status)"
+            type="danger"
+            plain
+            @click="openCancel"
+          >
+            取消任务
+          </el-button>
         </div>
       </template>
     </el-drawer>
+
+    <!-- 转交 -->
+    <el-dialog v-model="transferVisible" title="转交维保任务" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="目标维修工" required>
+          <el-select v-model="transferForm.targetAssigneeId" filterable style="width: 100%">
+            <el-option
+              v-for="e in engineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName || '未分组'}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="转交原因" required>
+          <el-input v-model="transferForm.reason" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitTransfer">确认转交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 取消任务 -->
+    <el-dialog v-model="cancelVisible" title="取消维保任务" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="原因" required>
+          <el-input v-model="cancelForm.reason" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cancelVisible = false">取消</el-button>
+        <el-button type="danger" :loading="submitting" @click="submitCancel">确认取消</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 指派 -->
     <el-dialog v-model="assignVisible" title="指派维保任务" width="460px">
@@ -240,6 +316,27 @@
       <template #footer>
         <el-button @click="assignVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submitAssign">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 池内转派 -->
+    <el-dialog v-model="fromPoolVisible" title="池内转派" width="460px">
+      <el-form label-width="80px">
+        <el-form-item label="维修工" required>
+          <el-select v-model="fromPoolAssigneeId" filterable style="width: 100%">
+            <el-option
+              v-for="e in engineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName || '未分组'}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="sub">池内转派会直接把任务指派给目标维修工并移出任务池</div>
+      <template #footer>
+        <el-button @click="fromPoolVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitFromPool">确认转派</el-button>
       </template>
     </el-dialog>
 
@@ -299,7 +396,11 @@ import {
   acceptMaintenanceTask,
   completeMaintenanceTask,
   rejectMaintenanceTask,
-  confirmMaintenanceTask
+  confirmMaintenanceTask,
+  getMaintenanceTimeline,
+  transferMaintenanceTask,
+  cancelMaintenanceTask,
+  fromPoolMaintenanceTask
 } from '@/api/maintenance'
 import { getEngineers } from '@/api/user'
 import { getCommunities } from '@/api/basedata'
@@ -356,6 +457,15 @@ const generateForm = reactive({ planDate: '', destination: 'ASSIGN' })
 
 const taskVisible = ref(false)
 const current = ref({})
+const timelineList = ref([])
+const timelineLoading = ref(false)
+
+const transferVisible = ref(false)
+const transferForm = reactive({ targetAssigneeId: null, reason: '' })
+const cancelVisible = ref(false)
+const cancelForm = reactive({ reason: '' })
+const fromPoolVisible = ref(false)
+const fromPoolAssigneeId = ref(null)
 
 const assignVisible = ref(false)
 const assigneeId = ref(null)
@@ -485,6 +595,7 @@ async function openTask(row) {
   try {
     current.value = await getMaintenanceTask(row.id)
     taskVisible.value = true
+    loadTimeline(row.id)
   } catch (e) {
     // 1001/1002 由拦截器提示
   }
@@ -495,6 +606,94 @@ async function openTaskById(id) {
   tab.value = 'tasks'
   current.value = await getMaintenanceTask(id)
   taskVisible.value = true
+  loadTimeline(id)
+}
+
+async function loadTimeline(id) {
+  timelineLoading.value = true
+  try {
+    const data = await getMaintenanceTimeline(id)
+    timelineList.value = data.list
+  } catch (e) {
+    timelineList.value = []
+  } finally {
+    timelineLoading.value = false
+  }
+}
+
+async function openFromPool() {
+  fromPoolAssigneeId.value = null
+  if (!engineers.value.length) await ensureEngineers().catch(() => [])
+  fromPoolVisible.value = true
+}
+
+async function submitFromPool() {
+  if (!fromPoolAssigneeId.value) {
+    notify.warning('请选择维修工')
+    return
+  }
+  submitting.value = true
+  try {
+    await fromPoolMaintenanceTask(current.value.id, { assigneeId: fromPoolAssigneeId.value })
+    notify.success('已从任务池转派')
+    fromPoolVisible.value = false
+    taskVisible.value = false
+    loadTasks()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openTransfer() {
+  transferForm.targetAssigneeId = null
+  transferForm.reason = ''
+  if (!engineers.value.length) await ensureEngineers().catch(() => [])
+  transferVisible.value = true
+}
+
+async function submitTransfer() {
+  if (!transferForm.targetAssigneeId || !transferForm.reason.trim()) {
+    notify.warning('请选择目标维修工并填写转交原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await transferMaintenanceTask(current.value.id, transferForm)
+    notify.success('已转交')
+    transferVisible.value = false
+    taskVisible.value = false
+    loadTasks()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+function openCancel() {
+  cancelForm.reason = ''
+  cancelVisible.value = true
+}
+
+async function submitCancel() {
+  if (!cancelForm.reason.trim()) {
+    notify.warning('请填写取消原因')
+    return
+  }
+  submitting.value = true
+  try {
+    await cancelMaintenanceTask(current.value.id, { reason: cancelForm.reason })
+    notify.success('任务已取消')
+    cancelVisible.value = false
+    taskVisible.value = false
+    loadTasks()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function ensureEngineers() {
@@ -647,6 +846,22 @@ onMounted(async () => {
   width: 82px;
   height: 82px;
   border-radius: 6px;
+}
+.img-error {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+.log-op {
+  font-weight: 600;
 }
 .drawer-footer {
   display: flex;

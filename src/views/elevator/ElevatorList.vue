@@ -33,6 +33,7 @@
       >
         <el-button>批量导入</el-button>
       </el-upload>
+      <el-button v-if="isAdmin" @click="handleDownloadTemplate">下载导入模板</el-button>
       <span class="sub">导入模板列：小区编码*、电梯编号、楼栋、单元、位置、品牌、型号、载重、安装日期、状态、备注</span>
     </div>
 
@@ -165,6 +166,13 @@
           {{ [current?.building, current?.unit, current?.location].filter(Boolean).join(' ') || '—' }}
         </el-descriptions-item>
         <el-descriptions-item label="下次年检">{{ current?.nextInspectDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="电梯类型">{{ ELEVATOR_TYPE_MAP[detail.elevatorType] || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="品牌 / 型号">
+          {{ [detail.brand, detail.model].filter(Boolean).join(' / ') || '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="载重(kg)">{{ detail.loadCapacity ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="安装日期">{{ detail.installDate || '—' }}</el-descriptions-item>
+        <el-descriptions-item v-if="detail.remark" label="备注" :span="2">{{ detail.remark }}</el-descriptions-item>
       </el-descriptions>
       <el-tabs v-model="profileTab" class="tabs" @tab-change="loadProfile">
         <el-tab-pane label="历史工单" name="WORK_ORDER" />
@@ -198,8 +206,10 @@ import {
   updateElevator,
   deleteElevator,
   getElevatorProfile,
+  getElevatorDetail,
   inspectElevator,
-  importElevators
+  importElevators,
+  downloadElevatorTemplate
 } from '@/api/elevator'
 import { getCommunities } from '@/api/basedata'
 import ListError from '@/components/ListError.vue'
@@ -207,7 +217,8 @@ import { useUserStore } from '@/stores/user'
 import {
   ELEVATOR_STATUS_MAP,
   ELEVATOR_STATUS_TAG,
-  ELEVATOR_STATUS_OPTIONS
+  ELEVATOR_STATUS_OPTIONS,
+  ELEVATOR_TYPE_MAP
 } from '@/utils/dict'
 
 const userStore = useUserStore()
@@ -253,6 +264,7 @@ const profileTab = ref('WORK_ORDER')
 const profileLoading = ref(false)
 const profileList = ref([])
 const current = ref(null)
+const detail = ref({})
 
 async function loadData() {
   loading.value = true
@@ -381,9 +393,31 @@ async function submitInspect() {
 
 async function openProfile(row) {
   current.value = row
+  detail.value = {}
   profileTab.value = 'WORK_ORDER'
   profileVisible.value = true
   loadProfile()
+  getElevatorDetail(row.id)
+    .then((data) => {
+      detail.value = data || {}
+    })
+    .catch(() => {
+      detail.value = {}
+    })
+}
+
+async function handleDownloadTemplate() {
+  try {
+    const { blob, filename } = await downloadElevatorTemplate()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || '电梯导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    // 错误由拦截器提示
+  }
 }
 
 async function loadProfile() {

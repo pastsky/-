@@ -130,9 +130,11 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
+          <el-table-column label="操作" width="210" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openTemplate(row)">查看点位</el-button>
+              <el-button v-if="isAdmin" link type="primary" @click="openTemplateEdit(row)">编辑</el-button>
+              <el-button v-if="isAdmin" link type="danger" @click="handleTemplateDelete(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -260,6 +262,19 @@
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+        <el-table-column label="照片" width="90">
+          <template #default="{ row }">
+            <el-tag v-if="row.images && row.images.length" size="small" type="info">
+              {{ row.images.length }} 张
+            </el-tag>
+            <span v-else class="sub">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="canExecute" label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openPoint(row)">录入</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div v-if="current.sourceWorkOrderIds?.length" class="section-title">
@@ -270,6 +285,22 @@
         <div class="drawer-footer">
           <el-button @click="taskVisible = false">关闭</el-button>
           <el-button
+            v-if="canExecute && current.status === 'ASSIGNED'"
+            type="primary"
+            :loading="submitting"
+            @click="handleAcceptTask"
+          >
+            接单
+          </el-button>
+          <el-button
+            v-if="canExecute && current.status === 'PROCESSING'"
+            type="success"
+            :loading="submitting"
+            @click="handleSubmitTask"
+          >
+            提交任务
+          </el-button>
+          <el-button
             v-if="canWrite && ['COMPLETED', 'PROCESSING', 'PENDING'].includes(current.status)"
             type="danger"
             @click="openRejectTask"
@@ -279,6 +310,48 @@
         </div>
       </template>
     </el-drawer>
+
+    <!-- 点位录入 -->
+    <el-dialog v-model="pointVisible" title="点位录入" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="点位">
+          <b>{{ pointRow.pointName }}</b>
+          <el-tag :type="SEVERITY_TAG[pointRow.severity] || 'info'" size="small" class="tag">
+            {{ SEVERITY_MAP[pointRow.severity] || '—' }}
+          </el-tag>
+        </el-form-item>
+        <el-form-item label="结果" required>
+          <el-radio-group v-model="pointForm.result">
+            <el-radio value="NORMAL">正常</el-radio>
+            <el-radio value="ABNORMAL">异常</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注" :required="pointForm.result === 'ABNORMAL'">
+          <el-input
+            v-model="pointForm.remark"
+            type="textarea"
+            :rows="2"
+            placeholder="异常时必填，说明问题现象"
+          />
+        </el-form-item>
+        <el-form-item label="现场照片" :required="pointForm.result === 'ABNORMAL'">
+          <el-upload
+            v-model:file-list="pointFiles"
+            list-type="picture-card"
+            :http-request="handlePointUpload"
+            :limit="6"
+            multiple
+          >
+            <span class="sub">上传</span>
+          </el-upload>
+          <div class="sub">异常点位至少 1 张照片</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pointVisible = false">取消</el-button>
+        <el-button type="primary" :loading="pointSubmitting" @click="submitPoint">保存点位</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 驳回 -->
     <el-dialog v-model="rejectVisible" title="驳回巡检任务" width="460px">
@@ -294,7 +367,11 @@
     </el-dialog>
 
     <!-- 模板详情/新建 -->
-    <el-dialog v-model="templateVisible" :title="templateView ? '点位清单' : '新建点位模板'" width="620px">
+    <el-dialog
+      v-model="templateVisible"
+      :title="templateView ? '点位清单' : templateEdit ? '编辑点位模板' : '新建点位模板'"
+      width="620px"
+    >
       <el-form v-if="!templateView" label-width="96px" class="template-form">
         <el-form-item label="模板编码" required>
           <el-input v-model="templateForm.templateCode" placeholder="如 TPL-LIFT-01" />
@@ -352,6 +429,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import { notify } from '@/utils/notify'
 import {
   getInspectionPlans,
@@ -360,10 +438,19 @@ import {
   generateInspectionTasks,
   getInspectionTasks,
   getInspectionTask,
+  getInspectionPoints,
   rejectInspectionTask,
+  acceptInspectionTask,
+  submitInspectionTask,
+  updateInspectionPoint,
   getPointTemplates,
-  createPointTemplate
+  getPointTemplateDetail,
+  createPointTemplate,
+  updatePointTemplate,
+  deletePointTemplate
 } from '@/api/inspection'
+import { uploadImage, compressImage } from '@/api/file'
+import { collectUploadedUrls, hasPendingUpload } from '@/utils/upload'
 import ListError from '@/components/ListError.vue'
 import { getCommunities } from '@/api/basedata'
 import { useUserStore } from '@/stores/user'
@@ -424,11 +511,23 @@ const generateForm = reactive({ startDate: '', endDate: '' })
 const taskVisible = ref(false)
 const current = ref({})
 
+const pointVisible = ref(false)
+const pointSubmitting = ref(false)
+const pointRow = ref({})
+const pointForm = reactive({ result: 'NORMAL', remark: '' })
+const pointFiles = ref([])
+// 仅本单巡检人可逐点录入与提交
+const canExecute = computed(
+  () => !!current.value.assigneeId && current.value.assigneeId === userStore.currentUser?.id
+)
+
 const rejectVisible = ref(false)
 const rejectReason = ref('')
 
 const templateVisible = ref(false)
 const templateView = ref(false)
+const templateEdit = ref(false)
+const templateId = ref(null)
 const templateForm = reactive({
   templateCode: '',
   templateName: '',
@@ -594,7 +693,9 @@ async function submitGenerate() {
 
 async function openTask(row) {
   try {
-    current.value = await getInspectionTask(row.id)
+    const detail = await getInspectionTask(row.id)
+    detail.points = await getInspectionPoints(row.id).catch(() => detail.points || [])
+    current.value = detail
     taskVisible.value = true
   } catch (e) {
     // 1001/1002 由拦截器提示
@@ -604,7 +705,9 @@ async function openTask(row) {
 // 客服工作台「去处理」带 taskId 直达详情
 async function openTaskById(id) {
   tab.value = 'tasks'
-  current.value = await getInspectionTask(id)
+  const detail = await getInspectionTask(id)
+  detail.points = await getInspectionPoints(id).catch(() => detail.points || [])
+  current.value = detail
   taskVisible.value = true
 }
 
@@ -634,8 +737,96 @@ function addPoint() {
   templatePoints.value.push({ pointName: '', severity: 'MEDIUM' })
 }
 
+function openPoint(row) {
+  pointRow.value = row
+  pointForm.result = row.result || 'NORMAL'
+  pointForm.remark = row.remark || ''
+  pointFiles.value = (row.images || []).map((url) => ({
+    name: url.split('/').pop() || 'image',
+    url
+  }))
+  pointVisible.value = true
+}
+
+async function handlePointUpload(options) {
+  const compressed = await compressImage(options.file)
+  return uploadImage(compressed)
+}
+
+async function submitPoint() {
+  if (pointForm.result === 'ABNORMAL' && !pointForm.remark.trim()) {
+    notify.warning('异常点位需填写备注')
+    return
+  }
+  if (hasPendingUpload(pointFiles.value)) {
+    notify.error('有图片上传失败，请删除后重新上传')
+    return
+  }
+  const images = collectUploadedUrls(pointFiles.value)
+  if (pointForm.result === 'ABNORMAL' && !images.length) {
+    notify.warning('异常点位需至少 1 张现场照片')
+    return
+  }
+  pointSubmitting.value = true
+  try {
+    await updateInspectionPoint(current.value.id, pointRow.value.id, {
+      result: pointForm.result,
+      remark: pointForm.remark || undefined,
+      images
+    })
+    notify.success('点位已保存')
+    pointVisible.value = false
+    current.value = await getInspectionTask(current.value.id)
+  } catch (e) {
+    // 3000/3002 由拦截器提示
+  } finally {
+    pointSubmitting.value = false
+  }
+}
+
+async function handleAcceptTask() {
+  try {
+    await ElMessageBox.confirm('确认接单该巡检任务？同一时刻仅可执行一个在途巡检。', '接单')
+  } catch (e) {
+    return
+  }
+  submitting.value = true
+  try {
+    await acceptInspectionTask(current.value.id)
+    notify.success('已接单')
+    current.value = await getInspectionTask(current.value.id)
+    loadTasks()
+  } catch (e) {
+    // 3000（在途巡检）/1002 由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function handleSubmitTask() {
+  try {
+    await ElMessageBox.confirm('提交后将校验全部点位，异常点位自动转工单，确认提交？', '提交巡检')
+  } catch (e) {
+    return
+  }
+  submitting.value = true
+  try {
+    const res = await submitInspectionTask(current.value.id)
+    const created = res?.workOrders?.length || 0
+    notify.success(created ? `提交成功，已转 ${created} 张异常工单` : '提交成功')
+    taskVisible.value = false
+    loadTasks()
+  } catch (e) {
+    // 3000（点位未检完/证据缺失）由拦截器提示
+  } finally {
+    submitting.value = false
+  }
+}
+
 function openTemplateCreate() {
   templateView.value = false
+  templateEdit.value = false
+  templateId.value = null
   Object.assign(templateForm, {
     templateCode: '',
     templateName: '',
@@ -646,15 +837,62 @@ function openTemplateCreate() {
   templateVisible.value = true
 }
 
-function openTemplate(row) {
+// 查看点位（列表 VO 无 points，需拉详情）
+async function openTemplate(row) {
   templateView.value = true
-  templatePoints.value = row.points || []
+  templatePoints.value = []
   templateVisible.value = true
+  try {
+    const detail = await getPointTemplateDetail(row.id)
+    templatePoints.value = detail.points || []
+  } catch (e) {
+    templatePoints.value = []
+  }
+}
+
+async function openTemplateEdit(row) {
+  templateView.value = false
+  templateEdit.value = true
+  templateId.value = row.id
+  templateVisible.value = true
+  try {
+    const detail = await getPointTemplateDetail(row.id)
+    Object.assign(templateForm, {
+      templateCode: detail.templateCode,
+      templateName: detail.templateName,
+      elevatorType: detail.elevatorType || 'PASSENGER',
+      status: detail.status || 'ACTIVE'
+    })
+    templatePoints.value = (detail.points || []).map((p) => ({ ...p }))
+  } catch (e) {
+    templatePoints.value = []
+  }
+}
+
+async function handleTemplateDelete(row) {
+  try {
+    await ElMessageBox.confirm(`确认删除点位模板「${row.templateName}」？被计划/任务引用时后端会拒绝。`, '删除确认', {
+      type: 'warning'
+    })
+  } catch (e) {
+    return
+  }
+  try {
+    await deletePointTemplate(row.id)
+    notify.success('模板已删除')
+    loadTemplates()
+  } catch (e) {
+    // 3002 被引用由拦截器提示
+  }
 }
 
 async function submitTemplate() {
-  if (!templateForm.templateCode || !templateForm.templateName) {
-    notify.warning('模板编码与名称必填')
+  if (!templateForm.templateName) {
+    notify.warning('模板名称必填')
+    return
+  }
+  if (!templateEdit.value && !templateForm.templateCode) {
+    notify.warning('模板编码必填')
     return
   }
   if (!templatePoints.value.length || templatePoints.value.some((p) => !p.pointName)) {
@@ -663,13 +901,28 @@ async function submitTemplate() {
   }
   submitting.value = true
   try {
-    await createPointTemplate({
-      ...templateForm,
-      points: templatePoints.value.map((p, i) => ({ ...p, sortNo: i + 1 }))
-    })
-    notify.success('模板已创建')
+    const payload = {
+      templateName: templateForm.templateName,
+      elevatorType: templateForm.elevatorType,
+      status: templateForm.status,
+      points: templatePoints.value.map((p, i) => ({
+        pointName: p.pointName,
+        severity: p.severity,
+        remark: p.remark || undefined,
+        sortNo: i + 1
+      }))
+    }
+    if (templateEdit.value) {
+      await updatePointTemplate(templateId.value, payload)
+      notify.success('模板已更新')
+    } else {
+      await createPointTemplate({ ...payload, templateCode: templateForm.templateCode })
+      notify.success('模板已创建')
+    }
     templateVisible.value = false
     loadTemplates()
+  } catch (e) {
+    // 3000/3002 由拦截器提示
   } finally {
     submitting.value = false
   }

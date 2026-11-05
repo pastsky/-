@@ -15,6 +15,11 @@ export function markNotificationRead(id) {
   return request.put(`/notifications/${id}/read`)
 }
 
+// 单条通知详情
+export function getNotificationDetail(id) {
+  return request.get(`/notifications/${id}`)
+}
+
 export function markAllNotificationsRead() {
   return request.put('/notifications/read-all')
 }

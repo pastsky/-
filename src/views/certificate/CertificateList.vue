@@ -20,6 +20,7 @@
           <el-form-item>
             <el-button type="primary" @click="loadCerts">查询</el-button>
             <el-button @click="resetQuery">重置</el-button>
+            <el-button @click="openEligibility">资格校验</el-button>
           </el-form-item>
         </el-form>
 
@@ -266,6 +267,45 @@
         <el-button type="primary" :loading="submitting" @click="submitMapping">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 资质校验（BOP83） -->
+    <el-dialog v-model="eligibilityVisible" title="资质校验" width="480px">
+      <el-form label-width="100px">
+        <el-form-item label="维修工" required>
+          <el-select v-model="eligibilityForm.engineerId" filterable style="width: 100%">
+            <el-option
+              v-for="e in engineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName || '未分组'}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="工单类型" required>
+          <el-select v-model="eligibilityForm.workOrderType" style="width: 100%">
+            <el-option v-for="o in WORK_ORDER_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="checking" @click="checkEligibility">校验</el-button>
+        </el-form-item>
+      </el-form>
+      <el-alert
+        v-if="eligibilityResult"
+        :type="eligibilityResult.eligible ? 'success' : 'error'"
+        :closable="false"
+        show-icon
+      >
+        <div>要求：{{ CERT_REQUIREMENT_MAP[eligibilityResult.requirement] || eligibilityResult.requirement || '—' }}</div>
+        <div>标签：{{ eligibilityResult.tagCode || '—' }}</div>
+        <div v-if="(eligibilityResult.missingTags || []).length">
+          缺失：{{ eligibilityResult.missingTags.join('、') }}
+        </div>
+        <div v-if="(eligibilityResult.expiredTags || []).length">
+          过期：{{ eligibilityResult.expiredTags.join('、') }}
+        </div>
+      </el-alert>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -285,8 +325,10 @@ import {
   updateRepairerTag,
   deleteRepairerTag,
   getTypeCertMappings,
-  updateTypeCertMapping
+  updateTypeCertMapping,
+  getCertificateEligibility
 } from '@/api/certificate'
+import { getEngineers } from '@/api/user'
 import ListError from '@/components/ListError.vue'
 import { useUserStore } from '@/stores/user'
 import {
@@ -295,7 +337,8 @@ import {
   CERT_STATUS_TAG,
   CERT_REQUIREMENT_MAP,
   CERT_REVIEW_ACTION_MAP,
-  WORK_ORDER_TYPE_MAP
+  WORK_ORDER_TYPE_MAP,
+  WORK_ORDER_TYPE_OPTIONS
 } from '@/utils/dict'
 
 const userStore = useUserStore()
@@ -334,6 +377,12 @@ const mappingLoading = ref(false)
 const mappings = ref([])
 const mappingVisible = ref(false)
 const mappingForm = reactive({ workOrderType: '', requirement: 'NONE', tagCode: '' })
+
+const eligibilityVisible = ref(false)
+const checking = ref(false)
+const engineers = ref([])
+const eligibilityForm = reactive({ engineerId: null, workOrderType: '' })
+const eligibilityResult = ref(null)
 
 async function loadCerts() {
   loading.value = true
@@ -526,6 +575,31 @@ async function submitMapping() {
     loadMappings()
   } finally {
     submitting.value = false
+  }
+}
+
+async function openEligibility() {
+  eligibilityResult.value = null
+  eligibilityForm.engineerId = null
+  eligibilityForm.workOrderType = ''
+  eligibilityVisible.value = true
+  if (!engineers.value.length) {
+    engineers.value = await getEngineers().catch(() => [])
+  }
+}
+
+async function checkEligibility() {
+  if (!eligibilityForm.engineerId || !eligibilityForm.workOrderType) {
+    notify.warning('请选择维修工与工单类型')
+    return
+  }
+  checking.value = true
+  try {
+    eligibilityResult.value = await getCertificateEligibility(eligibilityForm)
+  } catch (e) {
+    eligibilityResult.value = null
+  } finally {
+    checking.value = false
   }
 }
 

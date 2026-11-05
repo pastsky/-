@@ -7,7 +7,7 @@ import {
 const ok = (data) => ({ code: 0, message: 'success', data })
 const fail = (code, message) => ({ code, message, data: null })
 const UNFINISHED = ['PENDING', 'ASSIGNED', 'PROCESSING', 'PENDING_REVIEW']
-const ARCHIVED = ['CLOSED', 'CANCELED', 'ESCALATED_FINAL']
+const ARCHIVED = ['CLOSED', 'CANCELED']
 
 function parseBody(body) {
   if (typeof body === 'string') {
@@ -142,7 +142,7 @@ export default [
         id: logId,
         orderId: order.id,
         operatorId: user.id,
-        action: 'REMARK',
+        action: 'INTERNAL_NOTE',
         fromStatus: order.status,
         toStatus: order.status,
         remark: b.remark || '',
@@ -914,6 +914,150 @@ export default [
         list,
         ungrouped: { teamId: null, teamName: '未分组', completedCount: 0, timeoutRate: 0, rejectRate: 0, memberCount: users.filter((u) => !u.groupId && ['ENGINEER', 'VENDOR_ENGINEER'].includes(u.role)).length }
       })
+    }
+  },
+
+  // ============ 工单扩展动作：升级 / 改约 / 爽约 / 合并 / 查重 ============
+  {
+    url: '/api/work-orders/pool/duplicate-candidates',
+    method: 'get',
+    response: ({ query }) => {
+      const current = workOrders.find((o) => o.id === Number(query.orderId))
+      if (!current) return fail(1001, '工单不存在')
+      const list = workOrders
+        .filter(
+          (o) =>
+            o.id !== current.id &&
+            o.status === 'PENDING' &&
+            (o.location === current.location || o.elevatorId === current.elevatorId)
+        )
+        .map((o) => ({
+          id: o.id,
+          orderNo: o.orderNo,
+          title: o.title,
+          status: o.status,
+          location: o.location,
+          createdAt: o.createdAt
+        }))
+      return ok({ list })
+    }
+  },
+  {
+    url: '/api/work-orders/:id/escalate',
+    method: 'post',
+    response: ({ query, headers, body }) => {
+      const user = me(headers)
+      const order = workOrders.find((o) => o.id === Number(query.id))
+      if (!order) return fail(3001, '工单不存在')
+      const b = parseBody(body)
+      if (!b.reason) return fail(1000, '升级原因必填')
+      order.escalationCount = (order.escalationCount || 0) + 1
+      order.escalationLevel = order.escalationCount >= 2 ? 'L2' : 'L1'
+      order.escalationFinal = order.escalationCount >= 2 ? 1 : 0
+      addLog(order.id, user?.id, 'ESCALATE', order.status, order.status, b.reason, b.reason)
+      return ok({
+        id: order.id,
+        escalationLevel: order.escalationLevel,
+        escalationCount: order.escalationCount,
+        escalationFinal: !!order.escalationFinal
+      })
+    }
+  },
+  {
+    url: '/api/work-orders/:id/appointment',
+    method: 'put',
+    response: ({ query, headers, body }) => {
+      const user = me(headers)
+      const order = workOrders.find((o) => o.id === Number(query.id))
+      if (!order) return fail(3001, '工单不存在')
+      const b = parseBody(body)
+      if (!b.appointmentTime) return fail(1000, '新预约时间必填')
+      order.appointmentTime = b.appointmentTime
+      order.updatedAt = now()
+      addLog(order.id, user?.id, 'APPOINTMENT', order.status, order.status, b.reason || '', b.reason || '改约')
+      return ok({ id: order.id, appointmentTime: order.appointmentTime })
+    }
+  },
+  {
+    url: '/api/work-orders/:id/no-show',
+    method: 'post',
+    response: ({ query, headers, body }) => {
+      const user = me(headers)
+      const order = workOrders.find((o) => o.id === Number(query.id))
+      if (!order) return fail(3001, '工单不存在')
+      const b = parseBody(body)
+      addLog(order.id, user?.id, 'NO_SHOW', order.status, order.status, b.reason || '', b.reason || '业主爽约')
+      return ok({ id: order.id, noShow: true })
+    }
+  },
+  {
+    url: '/api/work-orders/:id/merge',
+    method: 'post',
+    response: ({ query, headers, body }) => {
+      const user = me(headers)
+      const order = workOrders.find((o) => o.id === Number(query.id))
+      if (!order) return fail(3001, '工单不存在')
+      const b = parseBody(body)
+      const sourceId = Number(b.sourceOrderId || (b.orderIds || [])[0])
+      const source = workOrders.find((o) => o.id === sourceId)
+      if (!source) return fail(3001, '被合并工单不存在')
+      if (source.status === 'CLOSED' || source.status === 'CANCELED') return fail(3000, '归档单不可合并')
+      source.status = 'CANCELED'
+      source.mergedIntoId = order.id
+      addLog(source.id, user?.id, 'MERGE', 'PENDING', 'CANCELED', b.reason || '', `合并至 ${order.orderNo}`)
+      addLog(order.id, user?.id, 'MERGE', order.status, order.status, b.reason || '', `合并 ${source.orderNo}`)
+      return ok({ id: order.id, mergedOrderIds: [source.id] })
+    }
+  },
+
+  // ============ 预约冲突检测 ============
+  {
+    url: '/api/appointments/conflict-check',
+    method: 'get',
+    response: ({ query }) => {
+      if (!query?.appointmentTime) return fail(1000, '预约时间必填')
+      // 仅在指定维修工（指派/改派场景）时检测同人排期冲突
+      const conflict =
+        !!query.engineerId &&
+        workOrders.some(
+          (o) =>
+            o.appointmentTime === query.appointmentTime &&
+            o.assigneeId === Number(query.engineerId) &&
+            ['ASSIGNED', 'PROCESSING'].includes(o.status) &&
+            Number(o.id) !== Number(query.orderId)
+        )
+      return ok({ conflict, conflicts: conflict ? [{ message: '该维修工该时段已有在途预约' }] : [] })
+    }
+  },
+
+  // ============ 客服工作台派单面板 ============
+  {
+    url: '/api/cs-workbench/assign-panel',
+    method: 'get',
+    response: ({ query }) => {
+      const list = users
+        .filter((u) => ['ENGINEER', 'VENDOR_ENGINEER'].includes(u.role) && u.status === 'ACTIVE')
+        .map((u) => {
+          const unfinished = workOrders.filter(
+            (o) => o.assigneeId === u.id && ['ASSIGNED', 'PROCESSING', 'PENDING_REVIEW'].includes(o.status)
+          )
+          const finished = workOrders.filter((o) => o.assigneeId === u.id && o.finishTime)
+          const overdue = unfinished.filter(isOverdue)
+          return {
+            id: u.id,
+            realName: u.realName,
+            groupName: groups.find((g) => g.id === u.groupId)?.name || '未分组',
+            onDuty: !!u.onDuty,
+            inFlight: unfinished.length,
+            todayOrderCount: finished.filter((o) => o.finishTime.slice(0, 10) === today()).length,
+            timeoutRate: unfinished.length
+              ? Math.round((overdue.length / unfinished.length) * 100)
+              : 0,
+            certEligible: true,
+            missingTags: []
+          }
+        })
+      return ok({ list })
     }
   }
 ]

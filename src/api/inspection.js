@@ -9,6 +9,11 @@ export async function getPointTemplates(params) {
   return unwrapList(data)
 }
 
+// 模板详情（含点位）
+export function getPointTemplateDetail(id) {
+  return request.get(`/inspection/point-templates/${id}`)
+}
+
 export async function createPointTemplate(data) {
   try {
     return await request.post('/inspection/point-templates', data)
@@ -62,6 +67,17 @@ export function getInspectionTask(id) {
 // 仅 {list}
 export async function getInspectionPoints(id) {
   return unwrapList(await request.get(`/inspection/tasks/${id}/points`))
+}
+
+// 单点结果提交（BOP97）
+export function updateInspectionPoint(taskId, pointId, data) {
+  return request.put(`/inspection/tasks/${taskId}/points/${pointId}`, data)
+}
+
+// 巡检总览（BOP101）：RES 按小区，管理端可传 branchId
+export async function getInspectionOverview(params) {
+  const data = await request.get('/inspection/overview', { params })
+  return { ...data, list: Array.isArray(data?.list) ? data.list : [] }
 }
 
 export function acceptInspectionTask(id) {

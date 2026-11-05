@@ -7,9 +7,29 @@ const ok = (data) => ({ code: 0, message: 'success', data })
 const fail = (code, message) => ({ code, message, data: null })
 
 const UNFINISHED = ['PENDING', 'ASSIGNED', 'PROCESSING', 'PENDING_REVIEW']
-const ARCHIVED = ['CLOSED', 'CANCELED', 'ESCALATED_FINAL']
+const ARCHIVED = ['CLOSED', 'CANCELED']
 const TIMEOUT_HOURS = { URGENT: 2, HIGH: 4, MEDIUM: 8, LOW: 24 }
 const CERT_REQUIRED = { LIFT: 'LIFT_CERT', ELECTRIC: 'ELECTRIC_CERT', FIRE: 'FIRE_CERT' }
+
+// 系统配置（供系统配置页联调）
+const configs = [
+  { id: 1, configKey: 'pool_timeout_hours', configValue: '4', editable: true, remark: '池内超时升级阈值（小时）' },
+  { id: 2, configKey: 'assign_timeout_hours', configValue: '2', editable: true, remark: '派单后未接单回池阈值（小时）' },
+  { id: 3, configKey: 'review_timeout_hours', configValue: '24', editable: true, remark: '待回访超时自动归档（小时）' },
+  { id: 4, configKey: 'work_order_finish_image_max', configValue: '6', editable: true, remark: '完工照片上限' },
+  { id: 5, configKey: 'cert_reject_max', configValue: '3', editable: true, remark: '证书驳回锁定阈值' },
+  { id: 6, configKey: 'cron_enabled', configValue: '1', editable: true, remark: '定时任务总开关；0=全部暂停（手工触发仍可用）' },
+  { id: 7, configKey: 'data_scope_enforce', configValue: '1', editable: false, remark: '数据范围强隔离开关（仅运维可改）' }
+]
+
+// 调度任务（供调度任务页联调）
+const scheduleJobs = [
+  { jobCode: 'POOL_TIMEOUT_SCAN', name: '池超时升级', cron: '0 */10 * * * ?', enabled: true, lastRunAt: '2026-11-05 09:10:00', lastResult: 'SUCCESS', lastProcessed: 3 },
+  { jobCode: 'ASSIGN_TIMEOUT_SCAN', name: '派单超时回池', cron: '0 */15 * * * ?', enabled: true, lastRunAt: '2026-11-05 09:15:00', lastResult: 'SUCCESS', lastProcessed: 1 },
+  { jobCode: 'REVIEW_TIMEOUT_SCAN', name: '回访超时归档', cron: '0 0 * * * ?', enabled: true, lastRunAt: '2026-11-05 09:00:00', lastResult: 'SUCCESS', lastProcessed: 0 },
+  { jobCode: 'CERT_EXPIRY_SCAN', name: '证书到期提醒', cron: '0 30 8 * * ?', enabled: true, lastRunAt: '2026-11-05 08:30:00', lastResult: 'SUCCESS', lastProcessed: 2 },
+  { jobCode: 'EXPORT_CLEANUP', name: '导出文件清扫', cron: '0 0 3 * * ?', enabled: false, lastRunAt: null, lastResult: null, lastProcessed: null }
+]
 
 function parseBody(body) {
   if (typeof body === 'string') {
@@ -327,6 +347,16 @@ export default [
       return ok({
         unreadCount: notifications.filter((n) => n.userId === user?.id && !n.isRead).length
       })
+    }
+  },
+  {
+    url: '/api/notifications/:id',
+    method: 'get',
+    response: ({ query, headers }) => {
+      const user = me(headers)
+      const n = notifications.find((x) => x.id === Number(query.id) && x.userId === user?.id)
+      if (!n) return fail(1001, '通知不存在')
+      return ok(toNotificationVO(n))
     }
   },
   {
@@ -769,6 +799,7 @@ export default [
         toStatus: l.toStatus,
         remark: l.remark,
         reason: l.reason,
+        images: l.images || [],
         createdAt: l.createdAt
       }))
       return ok(list)
@@ -970,15 +1001,22 @@ export default [
       if (order.status !== 'PROCESSING') return fail(3000, '当前状态不允许完工')
       if (order.assigneeId !== user.id) return fail(1002, '仅处理人可完工')
       const b = parseBody(body)
-      const images = Array.isArray(b.images) ? b.images : []
+      // 对齐 CompleteRequest：finishImages / finishRemark（兼容旧 images/remark）
+      const images = Array.isArray(b.finishImages)
+        ? b.finishImages
+        : Array.isArray(b.images)
+          ? b.images
+          : []
+      const remark = b.finishRemark ?? b.remark ?? ''
       if (!images.length) return fail(1000, '完工需至少上传 1 张现场照片')
+      if (images.length > 9) return fail(1000, '完工照片最多 9 张')
       order.status = 'PENDING_REVIEW'
       order.finishTime = now()
       order.finishImages = images
-      order.finishRemark = b.remark || ''
+      order.finishRemark = remark
       order.rejectCount = order.rejectCount || 0
       order.updatedAt = now()
-      addLog(order.id, user.id, 'COMPLETE', 'PROCESSING', 'PENDING_REVIEW', b.remark, null)
+      addLog(order.id, user.id, 'COMPLETE', 'PROCESSING', 'PENDING_REVIEW', remark, null)
       addNotification(order.reporterId, '工单已完工', `工单 ${order.orderNo} 已完工，待回访`, 'COMPLETED', order.id)
       return ok({ id: order.id, status: order.status })
     }
@@ -1315,5 +1353,51 @@ export default [
         message: '导出任务已提交，完成后将通过站内通知下发下载链接（保留 7 天）',
         expireDays: 7
       })
+  },
+
+  // ============ 系统配置 ============
+  {
+    url: '/api/configs',
+    method: 'get',
+    response: () => ok({ list: configs })
+  },
+  {
+    url: '/api/configs/:id',
+    method: 'put',
+    response: ({ query, body }) => {
+      const item = configs.find((c) => c.id === Number(query.id))
+      if (!item) return fail(1001, '配置不存在')
+      if (!item.editable) return fail(1002, '该配置只读')
+      const b = parseBody(body)
+      if (b.value === undefined) return fail(1000, '配置值必填')
+      item.value = String(b.value)
+      item.updatedAt = now()
+      return ok(item)
+    }
+  },
+
+  // ============ 调度任务 ============
+  {
+    url: '/api/schedules/jobs',
+    method: 'get',
+    response: () => ok({ list: scheduleJobs })
+  },
+  {
+    url: '/api/schedules/jobs/:jobCode/run',
+    method: 'post',
+    response: ({ query }) => {
+      const job = scheduleJobs.find((j) => j.jobCode === query.jobCode)
+      if (!job) return fail(1001, '任务不存在')
+      job.lastRunAt = now()
+      job.lastResult = 'SUCCESS'
+      job.lastProcessed = Math.floor(Math.random() * 10)
+      return ok({
+        jobCode: job.jobCode,
+        processed: job.lastProcessed,
+        succeeded: job.lastProcessed,
+        failed: 0,
+        durationMs: 128
+      })
+    }
   }
 ]

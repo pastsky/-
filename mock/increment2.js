@@ -242,6 +242,61 @@ export default [
     }
   },
   {
+    url: '/api/certificates/mine',
+    method: 'get',
+    response: ({ headers, query }) => {
+      const user = me(headers)
+      let list = certificates.filter((c) => c.engineerId === user?.id).map(decorateCert)
+      if (query?.status) list = list.filter((c) => c.status === query.status)
+      return ok({ list })
+    }
+  },
+  {
+    url: '/api/certificates/eligibility',
+    method: 'get',
+    response: ({ query }) => {
+      const mapping = typeCertMappings.find((m) => m.workOrderType === query.workOrderType)
+      const engineerId = Number(query.engineerId)
+      const tagCode = mapping?.tagCode
+      const owned = certificates.filter(
+        (c) =>
+          c.engineerId === engineerId &&
+          c.tagCode === tagCode &&
+          c.status === 'APPROVED' &&
+          (!c.expireDate || c.expireDate >= today())
+      )
+      return ok({
+        engineerId,
+        workOrderType: query.workOrderType,
+        requirement: mapping?.requirement || 'NONE',
+        tagCode: tagCode || null,
+        eligible: (mapping?.requirement || 'NONE') !== 'FORCE' || owned.length > 0,
+        missingTags: (mapping?.requirement === 'FORCE' && !owned.length && tagCode) ? [tagCode] : [],
+        expiredTags: []
+      })
+    }
+  },
+  {
+    url: '/api/certificates/:id/resubmit',
+    method: 'post',
+    response: ({ query, body }) => {
+      const c = certificates.find((x) => x.id === Number(query.id))
+      if (!c) return fail(1001, '证书不存在')
+      if (c.status === 'LOCKED') return fail(3000, '证书已锁定，需管理员解锁')
+      const b = parseBody(body)
+      Object.assign(c, {
+        status: 'PENDING',
+        certNo: b.certNo ?? c.certNo,
+        certLevel: b.certLevel ?? c.certLevel,
+        issueDate: b.issueDate ?? c.issueDate,
+        expireDate: b.expireDate ?? c.expireDate,
+        imageUrls: b.imageUrls || c.imageUrls,
+        updatedAt: now()
+      })
+      return ok({ id: c.id, status: c.status, rejectCount: c.rejectCount })
+    }
+  },
+  {
     url: '/api/certificates/:id',
     method: 'get',
     response: ({ query }) => {
@@ -471,6 +526,121 @@ export default [
     }
   },
   {
+    url: '/api/inspection/overview',
+    method: 'get',
+    response: ({ query }) => {
+      const branchId = query?.branchId ? Number(query.branchId) : 1
+      const list = elevators
+        .filter((e) => !branchId || e.communityId === branchId || e.branchId === branchId)
+        .map((e) => {
+          const tasks = inspectionTasks.filter((t) => t.elevatorId === e.id)
+          const latest = tasks.sort((a, b) => (a.scheduledTime < b.scheduledTime ? 1 : -1))[0]
+          return {
+            elevatorId: e.id,
+            elevatorNo: e.elevatorNo,
+            lastInspectionTime: latest?.actualTime || latest?.scheduledTime || null,
+            overallStatus: latest ? (latest.abnormalCount > 0 ? 'ABNORMAL' : 'NORMAL') : 'UNKNOWN'
+          }
+        })
+      return ok({ branchId, list })
+    }
+  },
+  {
+    url: '/api/inspection/tasks/:id/points',
+    method: 'get',
+    response: ({ query }) => {
+      const t = inspectionTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      return ok({ list: t.points || [] })
+    }
+  },
+  {
+    url: '/api/inspection/tasks/:id/points/:pid',
+    method: 'put',
+    response: ({ query, body }) => {
+      const t = inspectionTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      const point = (t.points || []).find((p) => p.id === Number(query.pid))
+      if (!point) return fail(1001, '点位不存在')
+      const b = parseBody(body)
+      if (!b.result) return fail(1000, '点位结果必填')
+      if (b.result === 'ABNORMAL' && (!b.remark || !(b.images || []).length)) {
+        return fail(1000, '异常点位需备注与照片')
+      }
+      point.result = b.result
+      point.remark = b.remark || ''
+      point.images = b.images || []
+      point.checkedAt = now()
+      t.abnormalCount = (t.points || []).filter((p) => p.result === 'ABNORMAL').length
+      return ok({ pointId: point.id, result: point.result, checkedAt: point.checkedAt })
+    }
+  },
+  {
+    url: '/api/inspection/tasks/:id/accept',
+    method: 'post',
+    response: ({ query }) => {
+      const t = inspectionTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      if (t.status !== 'ASSIGNED') return fail(3000, '当前状态不允许接单')
+      t.status = 'PROCESSING'
+      return ok({ id: t.id, status: t.status })
+    }
+  },
+  {
+    url: '/api/inspection/tasks/:id/submit',
+    method: 'post',
+    response: ({ query }) => {
+      const t = inspectionTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      if ((t.points || []).some((p) => !p.result)) return fail(3000, '仍有未检点位')
+      t.status = 'COMPLETED'
+      t.actualTime = now()
+      const abnormal = (t.points || []).filter((p) => p.result === 'ABNORMAL')
+      return ok({
+        id: t.id,
+        status: t.status,
+        actualTime: t.actualTime,
+        workOrders: abnormal.map((p, i) => ({ id: 9000 + i, orderNo: `WO-AUTO-${p.id}`, elevatorId: t.elevatorId, merged: false }))
+      })
+    }
+  },
+  {
+    url: '/api/inspection/point-templates/:id',
+    method: 'get',
+    response: ({ query }) => {
+      const t = pointTemplates.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '模板不存在')
+      return ok(t)
+    }
+  },
+  {
+    url: '/api/inspection/point-templates/:id',
+    method: 'put',
+    response: ({ query, body }) => {
+      const t = pointTemplates.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '模板不存在')
+      const b = parseBody(body)
+      Object.assign(t, {
+        templateName: b.templateName ?? t.templateName,
+        elevatorType: b.elevatorType ?? t.elevatorType,
+        status: b.status ?? t.status,
+        points: b.points || t.points,
+        pointCount: (b.points || t.points || []).length
+      })
+      return ok(t)
+    }
+  },
+  {
+    url: '/api/inspection/point-templates/:id',
+    method: 'delete',
+    response: ({ query }) => {
+      const idx = pointTemplates.findIndex((x) => x.id === Number(query.id))
+      if (idx < 0) return fail(1001, '模板不存在')
+      pointTemplates.splice(idx, 1)
+      return ok({ id: Number(query.id), deleted: true })
+    }
+  },
+  {
     url: '/api/inspection/tasks/:id',
     method: 'get',
     response: ({ query }) => {
@@ -645,6 +815,87 @@ export default [
       if (t.status !== 'COMPLETED') return fail(3000, '仅已完工任务可确认')
       t.status = 'CONFIRMED'
       return ok(null)
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/pool',
+    method: 'get',
+    response: ({ query }) => {
+      let list = maintenanceTasks.filter((t) => t.poolFlag === 1 && t.status === 'PENDING')
+      if (query?.status) list = list.filter((t) => t.status === query.status)
+      return ok(paginate(list.map(decorateTask), query?.page, query?.pageSize))
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/:id/grab',
+    method: 'post',
+    response: ({ query, headers }) => {
+      const user = me(headers)
+      const t = maintenanceTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      if (!(t.poolFlag === 1 && t.status === 'PENDING')) return fail(3000, '任务已被抢或状态已变化')
+      t.poolFlag = 0
+      t.assigneeId = user?.id || null
+      t.status = 'PROCESSING'
+      return ok({ id: t.id, status: t.status })
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/:id/from-pool',
+    method: 'post',
+    response: ({ query, body }) => {
+      const t = maintenanceTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      const b = parseBody(body)
+      if (!b.assigneeId) return fail(1000, '请选择维修工')
+      t.poolFlag = 0
+      t.assigneeId = Number(b.assigneeId)
+      t.status = 'ASSIGNED'
+      return ok({ id: t.id, status: t.status })
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/:id/transfer',
+    method: 'post',
+    response: ({ query, body }) => {
+      const t = maintenanceTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      const b = parseBody(body)
+      if (!b.targetAssigneeId || !b.reason) return fail(1000, '目标维修工与原因必填')
+      t.assigneeId = Number(b.targetAssigneeId)
+      t.status = 'ASSIGNED'
+      return ok({ id: t.id, status: t.status })
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/:id/cancel',
+    method: 'post',
+    response: ({ query, body }) => {
+      const t = maintenanceTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      const b = parseBody(body)
+      if (!b.reason) return fail(1000, '取消原因必填')
+      t.status = 'CANCELED'
+      return ok({ id: t.id, status: t.status })
+    }
+  },
+  {
+    url: '/api/maintenance/tasks/:id/timeline',
+    method: 'get',
+    response: ({ query }) => {
+      const t = maintenanceTasks.find((x) => x.id === Number(query.id))
+      if (!t) return fail(1001, '任务不存在')
+      return ok({
+        list: [
+          { operatorName: '系统', actionLabel: '生成任务', createdAt: t.scheduledTime || now() },
+          {
+            operatorName: findUser(t.assigneeId)?.realName || '系统',
+            actionLabel: t.status === 'COMPLETED' ? '完工' : '接单',
+            createdAt: t.actualTime || now()
+          }
+        ],
+        total: 2
+      })
     }
   },
   {

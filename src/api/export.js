@@ -20,7 +20,11 @@ export function downloadExport(id) {
   return request.get(`/exports/${id}/download`, { responseType: 'blob' })
 }
 
-// {list, ungrouped}
-export function getTeamPerformance(params) {
-  return request.get('/stats/team-performance', { params })
+// 班组统计：{list, ungrouped}
+export async function getTeamPerformance(params) {
+  const data = await request.get('/stats/team-performance', { params })
+  return {
+    list: Array.isArray(data?.list) ? data.list : [],
+    ungrouped: data?.ungrouped || null
+  }
 }

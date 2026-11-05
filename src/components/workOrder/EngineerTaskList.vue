@@ -7,7 +7,7 @@
       </div>
       <div class="ops">
         <el-radio-group v-model="tab" size="small">
-          <el-radio-button value="todo">待办 {{ todoList.length }}</el-radio-button>
+          <el-radio-button value="todo">待办 {{ todoCount }}</el-radio-button>
           <el-radio-button value="history">历史 {{ historyList.length }}</el-radio-button>
         </el-radio-group>
         <el-input
@@ -43,7 +43,10 @@
         >
           <div class="card-top">
             <div class="title-line">
-              <el-tag size="small" :type="WORK_ORDER_STATUS_TAG[row.status]">
+              <el-tag
+                size="small"
+                :type="row.status === 'PENDING_REVIEW' ? 'success' : WORK_ORDER_STATUS_TAG[row.status]"
+              >
                 {{ WORK_ORDER_STATUS_MAP[row.status] || row.status }}
               </el-tag>
               <el-tag size="small" effect="plain">
@@ -83,7 +86,6 @@
             </el-button>
             <el-button @click="goDetail(row)">详情</el-button>
             <span v-if="row.status === 'PENDING_REVIEW'" class="sub">已完工，等待客服回访</span>
-            <span v-if="row.status === 'PENDING'" class="sub">已退回待派单，等待客服重新指派</span>
           </div>
         </el-card>
       </div>
@@ -115,9 +117,13 @@ const tab = ref('todo')
 const keyword = ref('')
 const actingId = ref(null)
 
-const DONE = ['COMPLETED', 'CLOSED', 'CANCELED', 'ESCALATED_FINAL']
-const todoList = computed(() => list.value.filter((r) => !DONE.includes(r.status)))
+// 维修工待办白名单：其余状态（含 PENDING_REVIEW/COMPLETED/CLOSED/CANCELED）一律不进待办
+const TODO = ['ASSIGNED', 'PROCESSING']
+// 已完工待回访归入历史，且不渲染任何操作按钮
+const DONE = ['PENDING_REVIEW', 'COMPLETED', 'CLOSED', 'CANCELED']
+const todoList = computed(() => list.value.filter((r) => TODO.includes(r.status)))
 const historyList = computed(() => list.value.filter((r) => DONE.includes(r.status)))
+const todoCount = computed(() => todoList.value.length)
 const current = computed(() => (tab.value === 'todo' ? todoList.value : historyList.value))
 
 function isAlert(row) {

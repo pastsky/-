@@ -66,16 +66,34 @@ const routes = [
         meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
       },
       {
+        path: 'maintenance/pool',
+        name: 'MaintenancePool',
+        component: () => import('@/views/maintenance/MaintenancePool.vue'),
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER'] }
+      },
+      {
         path: 'inspection',
         name: 'InspectionList',
         component: () => import('@/views/inspection/InspectionList.vue'),
-        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
+        meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER'] }
+      },
+      {
+        path: 'inspection-overview',
+        name: 'InspectionOverview',
+        component: () => import('@/views/inspection/InspectionOverview.vue'),
+        meta: { roles: ['RESIDENT'] }
       },
       {
         path: 'certificates',
         name: 'CertificateList',
         component: () => import('@/views/certificate/CertificateList.vue'),
         meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
+      },
+      {
+        path: 'my-certificates',
+        name: 'CertificateMine',
+        component: () => import('@/views/certificate/CertificateMine.vue'),
+        meta: { roles: ['ENGINEER', 'VENDOR_ENGINEER'] }
       },
       {
         path: 'teams',
@@ -99,6 +117,18 @@ const routes = [
         path: 'users',
         name: 'UserList',
         component: () => import('@/views/user/UserList.vue'),
+        meta: { roles: ['ADMIN'] }
+      },
+      {
+        path: 'configs',
+        name: 'ConfigList',
+        component: () => import('@/views/config/ConfigList.vue'),
+        meta: { roles: ['ADMIN'] }
+      },
+      {
+        path: 'schedules',
+        name: 'ScheduleJobs',
+        component: () => import('@/views/schedule/ScheduleJobs.vue'),
         meta: { roles: ['ADMIN'] }
       },
       {

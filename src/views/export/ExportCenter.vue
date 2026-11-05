@@ -87,8 +87,9 @@
         <el-table-column prop="errorMessage" label="失败原因" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.errorMessage || '—' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
             <el-button
               v-if="row.status === 'SUCCESS'"
               link
@@ -97,7 +98,6 @@
             >
               下载
             </el-button>
-            <span v-else class="sub">—</span>
           </template>
         </el-table-column>
       </el-table>
@@ -110,13 +110,49 @@
         @current-change="loadList"
       />
     </el-card>
+
+    <!-- 导出任务详情（BOP117） -->
+    <el-dialog v-model="detailVisible" title="导出任务详情" width="560px">
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="任务号" :span="2">{{ detail.jobNo }}</el-descriptions-item>
+        <el-descriptions-item label="报表类型">{{ detail.reportType || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="格式">{{ detail.format || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ detail.status || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="行数">{{ detail.rowCount ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="文件大小">{{ formatSize(detail.fileSize) }}</el-descriptions-item>
+        <el-descriptions-item label="可下载">
+          <el-tag size="small" :type="detail.downloadable ? 'success' : 'info'">
+            {{ detail.downloadable ? '是' : '否' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ detail.createdAt || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="完成时间">{{ detail.finishedAt || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="过期时间" :span="2">{{ detail.expireAt || '—' }}</el-descriptions-item>
+        <el-descriptions-item v-if="detail.errorMessage" label="失败原因" :span="2">
+          {{ detail.errorMessage }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="detail.filters" label="筛选快照" :span="2">
+          <code>{{ JSON.stringify(detail.filters) }}</code>
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button
+          v-if="detail.downloadable"
+          type="primary"
+          @click="handleDownload(detail)"
+        >
+          下载文件
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { notify } from '@/utils/notify'
-import { createExportJob, getExportList, downloadExport } from '@/api/export'
+import { createExportJob, getExportList, getExportDetail, downloadExport } from '@/api/export'
 import ListError from '@/components/ListError.vue'
 import {
   REPORT_TYPE_MAP,
@@ -132,6 +168,8 @@ const loading = ref(false)
 const loadError = ref(false)
 const list = ref([])
 const total = ref(0)
+const detailVisible = ref(false)
+const detail = ref({})
 const dateRange = ref([])
 const form = reactive({ reportType: 'WORK_ORDER', format: 'EXCEL' })
 const query = reactive({ page: 1, pageSize: 20, status: '' })
@@ -200,6 +238,16 @@ async function handleCreate() {
     await loadList()
   } finally {
     creating.value = false
+  }
+}
+
+async function openDetail(row) {
+  detail.value = { ...row }
+  detailVisible.value = true
+  try {
+    detail.value = await getExportDetail(row.id)
+  } catch (e) {
+    // 1001/1002 由拦截器提示，保留列表行数据
   }
 }
 

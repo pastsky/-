@@ -23,8 +23,9 @@
           <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip>
             <template #default="{ row }">{{ row.remark || '—' }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
+              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
               <el-button link type="primary" @click="openMembers(row)">成员</el-button>
               <el-button v-if="isAdmin" link type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button v-if="isAdmin" link type="danger" @click="handleDelete(row)">删除</el-button>
@@ -128,6 +129,21 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="detailVisible" title="班组详情" width="480px">
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="班组编码">{{ detailRow.teamCode }}</el-descriptions-item>
+        <el-descriptions-item label="班组名称">{{ detailRow.teamName }}</el-descriptions-item>
+        <el-descriptions-item label="成员数">{{ detailRow.memberCount ?? 0 }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          {{ TEAM_STATUS_MAP[detailRow.status] || detailRow.status }}
+        </el-descriptions-item>
+        <el-descriptions-item label="备注">{{ detailRow.remark || '—' }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button type="primary" @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer v-model="memberVisible" :title="`班组成员 · ${currentTeam?.teamName || ''}`" size="480px">
       <el-select
         v-model="memberIds"
@@ -158,6 +174,7 @@ import { ElMessageBox } from 'element-plus'
 import { notify } from '@/utils/notify'
 import {
   getTeamList,
+  getTeamDetail,
   createTeam,
   updateTeam,
   deleteTeam,
@@ -193,6 +210,8 @@ const memberVisible = ref(false)
 const currentTeam = ref(null)
 const memberIds = ref([])
 const engineers = ref([])
+const detailVisible = ref(false)
+const detailRow = ref({})
 
 const auditRange = ref([])
 const auditLoading = ref(false)
@@ -267,6 +286,16 @@ async function handleDelete(row) {
     loadTeams()
   } catch (e) {
     // 3002 等由拦截器提示
+  }
+}
+
+async function openDetail(row) {
+  detailRow.value = { ...row }
+  detailVisible.value = true
+  try {
+    detailRow.value = await getTeamDetail(row.id)
+  } catch (e) {
+    // 1001/1002 由拦截器提示
   }
 }
 

@@ -64,6 +64,9 @@
 
     <div class="toolbar">
       <el-button v-if="canCreate" type="primary" @click="goCreate">新建工单</el-button>
+      <el-button v-if="canBatch && selection.length" type="primary" @click="openBatchAssign">
+        批量指派（{{ selection.length }}）
+      </el-button>
       <el-button v-if="canBatch && selection.length" type="warning" @click="handleBatch('pool')">
         批量入池（{{ selection.length }}）
       </el-button>
@@ -141,6 +144,32 @@
       @size-change="loadData"
       @current-change="loadData"
     />
+
+    <!-- 批量指派 -->
+    <el-dialog v-model="batchAssignVisible" title="批量指派" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="维修工" required>
+          <el-select v-model="batchAssigneeId" filterable placeholder="选择维修工" style="width: 100%">
+            <el-option
+              v-for="e in batchEngineers"
+              :key="e.id"
+              :label="`${e.realName}（${e.groupName || '未分组'}，在途 ${e.unfinishedCount ?? 0}）`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="batchReason" type="textarea" :rows="2" placeholder="选填，写入批次日志" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">逐单执行派单校验，返回成功/失败条数；失败明细将单独提示</div>
+      <template #footer>
+        <el-button @click="batchAssignVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchAssigning" @click="submitBatchAssign">
+          确认指派 {{ selection.length }} 单
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -149,7 +178,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { notify } from '@/utils/notify'
-import { getWorkOrderList, batchToPool, batchCancel } from '@/api/workOrder'
+import { getWorkOrderList, batchToPool, batchCancel, batchAssign } from '@/api/workOrder'
+import { getEngineers } from '@/api/user'
 import ListError from '@/components/ListError.vue'
 import EngineerTaskList from '@/components/workOrder/EngineerTaskList.vue'
 import ResidentOrderList from '@/components/workOrder/ResidentOrderList.vue'
@@ -178,6 +208,11 @@ const list = ref([])
 const total = ref(0)
 const selection = ref([])
 const dateRange = ref([])
+const batchAssignVisible = ref(false)
+const batchAssigning = ref(false)
+const batchEngineers = ref([])
+const batchAssigneeId = ref(null)
+const batchReason = ref('')
 const query = reactive({
   page: 1,
   pageSize: 20,
@@ -332,6 +367,47 @@ async function handleBatch(action) {
     loadData()
   } catch (e) {
     // 取消输入或业务失败由拦截器提示
+  }
+}
+
+async function openBatchAssign() {
+  batchAssigneeId.value = null
+  batchReason.value = ''
+  batchEngineers.value = []
+  batchAssignVisible.value = true
+  try {
+    batchEngineers.value = await getEngineers()
+  } catch (e) {
+    batchEngineers.value = []
+  }
+}
+
+async function submitBatchAssign() {
+  if (!batchAssigneeId.value) {
+    notify.warning('请选择维修工')
+    return
+  }
+  batchAssigning.value = true
+  try {
+    const result = await batchAssign({
+      orderIds: selection.value.map((r) => r.id),
+      assigneeId: batchAssigneeId.value,
+      reason: batchReason.value || undefined
+    })
+    if (result.failureCount) {
+      ElMessageBox.alert(
+        (result.failures || []).map((f) => `#${f.orderId}：${f.message}（${f.code}）`).join('\n'),
+        `失败 ${result.failureCount} 条`,
+        { type: 'warning' }
+      )
+    }
+    notify.success(`成功 ${result.successCount} 条`)
+    batchAssignVisible.value = false
+    loadData()
+  } catch (e) {
+    // 1000/3002 由拦截器提示
+  } finally {
+    batchAssigning.value = false
   }
 }
 

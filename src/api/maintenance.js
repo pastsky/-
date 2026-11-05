@@ -24,6 +24,20 @@ export async function getMaintenanceTasks(params) {
   return unwrapPage(await request.get('/maintenance/tasks', { params }))
 }
 
+// 维保任务池（维修工可抢）
+export async function getMaintenanceTaskPool(params) {
+  return unwrapPage(await request.get('/maintenance/tasks/pool', { params }))
+}
+
+export function grabMaintenanceTask(id) {
+  return request.post(`/maintenance/tasks/${id}/grab`)
+}
+
+// 池内转派（客服指定维修工）
+export function fromPoolMaintenanceTask(id, data) {
+  return request.post(`/maintenance/tasks/${id}/from-pool`, data)
+}
+
 export function getMaintenanceTask(id) {
   return request.get(`/maintenance/tasks/${id}`)
 }

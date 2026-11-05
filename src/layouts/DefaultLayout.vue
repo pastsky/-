@@ -69,6 +69,24 @@
       <el-empty v-if="!filteredNotifications.length" description="暂无通知" />
     </div>
   </el-drawer>
+
+  <!-- 通知详情（BOP：GET /notifications/{id}） -->
+  <el-dialog v-model="notifyDetailVisible" title="通知详情" width="480px">
+    <el-descriptions :column="1" border>
+      <el-descriptions-item label="类型">
+        {{ NOTIFICATION_TYPE_MAP[notifyDetail.type] || notifyDetail.type || '—' }}
+      </el-descriptions-item>
+      <el-descriptions-item label="标题">{{ notifyDetail.title || '—' }}</el-descriptions-item>
+      <el-descriptions-item label="内容">{{ notifyDetail.content || '—' }}</el-descriptions-item>
+      <el-descriptions-item label="时间">{{ notifyDetail.createdAt || '—' }}</el-descriptions-item>
+    </el-descriptions>
+    <template #footer>
+      <el-button @click="notifyDetailVisible = false">关闭</el-button>
+      <el-button v-if="notifyDetail.orderId" type="primary" @click="goNotificationOrder">
+        查看关联工单
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -76,7 +94,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { getNotificationList, getUnreadCount, markNotificationRead, markAllNotificationsRead } from '@/api/notification'
+import { getNotificationList, getUnreadCount, getNotificationDetail, markNotificationRead, markAllNotificationsRead } from '@/api/notification'
 import { ROLE_MAP, NOTIFICATION_TYPE_MAP } from '@/utils/dict'
 
 const router = useRouter()
@@ -88,6 +106,8 @@ const notifications = ref([])
 const notifyVisible = ref(false)
 const notifyLoading = ref(false)
 const notifyFilter = ref('all')
+const notifyDetailVisible = ref(false)
+const notifyDetail = ref({})
 
 const allMenus = [
   { path: '/dispatch', title: '客服工作台', icon: 'Odometer', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
@@ -96,11 +116,16 @@ const allMenus = [
   { path: '/calendar', title: '维修日历', icon: 'Calendar', roles: ['ENGINEER', 'VENDOR_ENGINEER', 'ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/elevators', title: '电梯台账', icon: 'OfficeBuilding', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER'] },
   { path: '/maintenance', title: '维保计划', icon: 'Tools', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
-  { path: '/inspection', title: '巡检管理', icon: 'Aim', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/maintenance/pool', title: '维保任务池', icon: 'Box', roles: ['ENGINEER', 'VENDOR_ENGINEER'] },
+  { path: '/inspection', title: '巡检管理', icon: 'Aim', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'ENGINEER', 'VENDOR_ENGINEER'] },
+  { path: '/inspection-overview', title: '电梯巡检公示', icon: 'View', roles: ['RESIDENT'] },
   { path: '/certificates', title: '证书审核', icon: 'Medal', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
+  { path: '/my-certificates', title: '我的证书', icon: 'Medal', roles: ['ENGINEER', 'VENDOR_ENGINEER'] },
   { path: '/teams', title: '班组管理', icon: 'UserFilled', roles: ['ADMIN', 'CUSTOMER_SERVICE'] },
   { path: '/feedback', title: '反馈工单', icon: 'ChatDotRound', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN'] },
   { path: '/users', title: '用户管理', icon: 'User', roles: ['ADMIN'] },
+  { path: '/configs', title: '系统配置', icon: 'Setting', roles: ['ADMIN'] },
+  { path: '/schedules', title: '调度任务', icon: 'Timer', roles: ['ADMIN'] },
   { path: '/stats', title: '统计报表', icon: 'DataAnalysis', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/exports', title: '导出中心', icon: 'Download', roles: ['ADMIN', 'CUSTOMER_SERVICE', 'BRANCH_ADMIN', 'VENDOR_ADMIN'] },
   { path: '/broadcast', title: '广播中心', icon: 'Promotion', roles: ['ADMIN', 'CUSTOMER_SERVICE'] }
@@ -161,10 +186,21 @@ async function handleOpen(n) {
     n.isRead = true
     unreadCount.value = Math.max(0, unreadCount.value - 1)
   }
-  if (n.orderId) {
-    notifyVisible.value = false
-    router.push(`/work-orders/${n.orderId}`)
+  notifyDetail.value = { ...n }
+  notifyDetailVisible.value = true
+  try {
+    notifyDetail.value = await getNotificationDetail(n.id)
+  } catch (e) {
+    // 1001 由拦截器提示，保留列表行数据
   }
+}
+
+function goNotificationOrder() {
+  const orderId = notifyDetail.value.orderId
+  if (!orderId) return
+  notifyVisible.value = false
+  notifyDetailVisible.value = false
+  router.push(`/work-orders/${orderId}`)
 }
 
 function handleSearch() {

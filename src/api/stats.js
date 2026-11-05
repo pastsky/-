@@ -18,3 +18,8 @@ export function getTypeDistribution(params) {
 export function getEngineerPerformance(params) {
   return request.get('/stats/engineer-performance', { params }).then(unwrapArray)
 }
+
+// 统计报表导出（文件流）：返回 { blob, filename }
+export function exportStats(params) {
+  return request.get('/stats/export', { params, responseType: 'blob' })
+}

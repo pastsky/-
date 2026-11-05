@@ -19,8 +19,9 @@ export function disableUser(id) {
   return request.delete(`/users/${id}`)
 }
 
+// 恢复：后端无 /enable 端点，改状态走 PUT /users/{id}
 export function enableUser(id) {
-  return request.put(`/users/${id}/enable`)
+  return request.put(`/users/${id}`, { status: 'ACTIVE' })
 }
 
 export function resetPassword(id, data) {

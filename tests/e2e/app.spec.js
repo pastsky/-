@@ -152,10 +152,22 @@ test('维修工接单、完工必须上传图片', async ({ page }) => {
   )
   await dialog.getByRole('button', { name: '提交完工' }).click()
   const completePayload = (await completeRequest).postDataJSON()
-  expect(completePayload.images[0]).toMatch(/^https?:\/\//)
+  // 对齐后端 CompleteRequest：finishImages / finishRemark
+  expect(completePayload.finishImages[0]).toMatch(/^https?:\/\//)
+  expect(completePayload.finishRemark).toBe('已更换水管接口')
 
   await expect(lastMessage(page)).toContainText('已完工')
   await expect(page.locator('.el-card').first()).toContainText('待回访')
+
+  // 已完工待回访必须离开维修工待办，进入历史并显示固定文案
+  await page.getByRole('menuitem', { name: '我的工单' }).click()
+  await expect(
+    page.locator('.el-radio-button').filter({ hasText: /^待办 0$/ })
+  ).toBeVisible()
+  await page.locator('.el-radio-button').filter({ hasText: '历史' }).click()
+  const historyCard = page.locator('.task-card').filter({ hasText: TITLE })
+  await expect(historyCard).toContainText('已完工，等待客服回访')
+  await expect(historyCard.getByRole('button', { name: '上传照片并完工' })).toHaveCount(0)
 })
 
 test('客服回访满意后归档', async ({ page }) => {
@@ -265,11 +277,14 @@ test('统计报表：指标卡、班组列与异步导出', async ({ page }) => 
   await expect(page.locator('.metric-card')).toHaveCount(11)
   await expect(page.locator('.chart canvas').first()).toBeVisible()
   await expect(page.getByText('维修工绩效')).toBeVisible()
-  await expect(page.locator('.el-table__header-wrapper')).toContainText('班组')
-  await expect(page.locator('.el-table__header-wrapper')).toContainText('超时率')
-  await expect(page.locator('.el-table__body-wrapper')).toContainText('李师傅')
+  const perfTable = page.locator('.el-card').filter({ hasText: '维修工绩效' }).last()
+  await expect(perfTable.locator('.el-table__header-wrapper')).toContainText('班组')
+  await expect(perfTable.locator('.el-table__header-wrapper')).toContainText('超时率')
+  await expect(perfTable.locator('.el-table__body-wrapper')).toContainText('李师傅')
+  // 班组统计（BOP119）
+  await expect(page.getByText('班组统计（BOP119）')).toBeVisible()
 
-  await page.getByRole('button', { name: '打开导出中心' }).click()
+  await page.getByRole('button', { name: '导出中心' }).click()
   await page.waitForURL(/\/exports$/)
   await expect(page.getByText('创建导出任务')).toBeVisible()
 })
@@ -494,6 +509,8 @@ test('全页面巡检：无运行时报错', async ({ page }) => {
     '/exports',
     '/broadcast',
     '/calendar',
+    '/configs',
+    '/schedules',
     '/work-orders/1'
   ]
   for (const path of paths) {
@@ -541,8 +558,8 @@ test('多角色页面巡检：无控制台错误', async ({ page }) => {
       key: 'cs',
       paths: ['/dispatch', '/work-orders', '/elevators', '/maintenance', '/inspection', '/certificates', '/feedback', '/stats', '/exports', '/broadcast', '/calendar']
     },
-    { key: 'engineer', paths: ['/work-orders', '/work-orders/pool', '/calendar', '/elevators'] },
-    { key: 'resident', paths: ['/work-orders', '/work-orders/create'] }
+    { key: 'engineer', paths: ['/work-orders', '/work-orders/pool', '/maintenance/pool', '/inspection', '/my-certificates', '/calendar', '/elevators'] },
+    { key: 'resident', paths: ['/work-orders', '/work-orders/create', '/inspection-overview'] }
   ]
 
   for (const sweep of sweeps) {
@@ -562,4 +579,46 @@ test('路由权限拦截：维修工访问客服工作台被重定向', async ({
   await loginAs(page, 'engineer')
   await page.goto('/dispatch')
   await expect(page).toHaveURL(/\/work-orders$/)
+})
+
+test('内部备注：写入后从流转日志回显（详情无 remarks 字段）', async ({ page }) => {
+  await loginAs(page, 'admin')
+  await page.goto('/work-orders/1')
+  await expect(page.locator('.el-card').first()).toBeVisible()
+
+  const note = `E2E内部备注-${Date.now()}`
+  await page.getByRole('button', { name: '内部备注', exact: true }).click()
+  const dialog = page.locator('.el-dialog').filter({ hasText: '内部备注' }).last()
+  await expect(dialog).toBeVisible()
+  await dialog.getByPlaceholder('仅客服与维修工可见').fill(note)
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  await expect(lastMessage(page)).toContainText('备注已保存')
+  await expect(page.locator('.remark-list')).toContainText(note)
+  // 同一内容也必须出现在流转记录（INTERNAL_NOTE 日志）
+  await expect(page.locator('.el-timeline')).toContainText(note)
+  await expect(page.locator('.el-timeline')).toContainText('内部备注')
+})
+
+test('工单升级 / 督办：原因必填并累加升级级别', async ({ page }) => {
+  await loginAs(page, 'admin')
+  await page.goto('/work-orders/1')
+  await expect(page.locator('.el-card').first()).toBeVisible()
+
+  await page.getByRole('button', { name: '升级/督办' }).click()
+  const dialog = page.locator('.el-dialog').filter({ hasText: '升级 / 督办' }).last()
+  await expect(dialog).toBeVisible()
+
+  // 原因为空时拦截
+  await dialog.getByRole('button', { name: '确认升级' }).click()
+  await expect(lastMessage(page, 'warning')).toContainText('请填写升级/督办原因')
+
+  await dialog
+    .getByPlaceholder('如：池中长时间无人接单、多次催办未响应')
+    .fill('E2E 自动化：池中长时间无人接单')
+  await dialog.getByRole('button', { name: '确认升级' }).click()
+
+  await expect(lastMessage(page)).toContainText('已升级并记录督办')
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('.el-timeline')).toContainText('超时升级')
 })

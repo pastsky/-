@@ -20,6 +20,11 @@ export function createCertificate(data) {
   return request.post('/certificates', data)
 }
 
+// 驳回/撤销后重新提交（BOP77）
+export function resubmitCertificate(id, data) {
+  return request.post(`/certificates/${id}/resubmit`, data)
+}
+
 export function approveCertificate(id) {
   return request.post(`/certificates/${id}/approve`)
 }

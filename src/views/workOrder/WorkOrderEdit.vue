@@ -59,6 +59,7 @@
               placeholder="选择日期（可留空）"
               :disabled-date="isNoDutyDate"
               style="width: 180px"
+              @change="checkDuty"
             />
             <el-time-select
               v-model="appointmentClock"
@@ -71,6 +72,7 @@
             />
           </div>
           <div class="sub">留空表示「尽快处理」；按 30 分钟粒度；无值班人员的日期不可选</div>
+          <div v-if="dutyHint" class="sub" :class="{ warn: dutyHint.warn }">{{ dutyHint.text }}</div>
         </el-form-item>
         <el-form-item label="问题描述" :error="errors.description">
           <el-input v-model="form.description" type="textarea" :rows="4" placeholder="请描述问题" />
@@ -101,8 +103,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { notify } from '@/utils/notify'
+import { ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { createWorkOrder, updateWorkOrder, getWorkOrderDetail } from '@/api/workOrder'
+import { createWorkOrder, updateWorkOrder, getWorkOrderDetail, getDutyAvailability, checkAppointmentConflict } from '@/api/workOrder'
 import { uploadImage, compressImage } from '@/api/file'
 import { collectUploadedUrls, hasPendingUpload } from '@/utils/upload'
 import { getCommunities, getElevators, getDutySchedules } from '@/api/basedata'
@@ -128,6 +131,7 @@ const elevators = ref([])
 const dutyDates = ref([])
 const appointmentDate = ref('')
 const appointmentClock = ref('')
+const dutyHint = ref(null)
 const form = reactive({
   title: '',
   type: '',
@@ -161,6 +165,22 @@ function isNoDutyDate(date) {
 
 function onTypeChange() {
   if (!requireElevator.value) form.elevatorId = null
+}
+
+// 值班可用性仅提示，不阻断预约（BOP51）
+async function checkDuty(date) {
+  dutyHint.value = null
+  if (!date) return
+  try {
+    const data = await getDutyAvailability({ date })
+    if (data?.available === false) {
+      dutyHint.value = { text: '当日暂无值班维修工，可能延迟上门（不阻断提交）', warn: true }
+    } else if (data?.hasDutyData) {
+      dutyHint.value = { text: '当日有值班维修工', warn: false }
+    }
+  } catch (e) {
+    dutyHint.value = null
+  }
 }
 
 // 值班表接口要求 startDate/endDate 必填且区间 ≤31 天：取本月剩余 + 下月
@@ -252,6 +272,24 @@ async function handleSubmit() {
     description: form.description,
     images: collectUploadedUrls(fileList.value)
   }
+  // 预约冲突检测：仅提示，确认后可继续提交
+  if (payload.appointmentTime) {
+    const conflict = await checkAppointmentConflict({
+      appointmentTime: payload.appointmentTime,
+      communityId: payload.communityId
+    }).catch(() => null)
+    if (conflict?.conflict || (conflict?.conflicts || []).length) {
+      try {
+        await ElMessageBox.confirm(
+          `该时段可能存在排期冲突${conflict.message ? '：' + conflict.message : ''}，仍要提交？`,
+          '排期冲突',
+          { type: 'warning' }
+        )
+      } catch (e) {
+        return
+      }
+    }
+  }
   submitting.value = true
   try {
     if (isEdit.value) {
@@ -283,5 +321,8 @@ async function handleSubmit() {
   color: var(--el-text-color-secondary);
   line-height: 1.6;
   margin-top: 2px;
+}
+.warn {
+  color: var(--el-color-warning);
 }
 </style>
